@@ -165,21 +165,28 @@ class File(object):
 
 
 class Repo(object):
-    def __init__(self, id=None, root=None, struct=None):
-        self.id = id
-        self.files = {}
-        self.root = root
+    def __init__(self, name, filename, root):
+        self.filename = filename
+        struct = json.loads(file(self.filename).read())
 
-        if struct:
-            self.id = struct["id"]
-            self.root = struct["root"]
-            self.files = dict([(filename, File.from_struct(self, data)) for filename, data in struct.get("files", {}).items()])
+        self.type = struct.get("type", "share")  # static / share
+        self.secret = struct.get("secret", None) # only for share
+        self.peers = struct.get("peers", None)   # only for share?
+
+        self.root = root
+        self.files = dict([(filename, File.from_struct(self, data)) for filename, data in struct.get("files", {}).items()])
+
+    def save(self, filename=None, state=None, local=None):
+        if not filename:
+            filename = self.filename
+        file(filename, "w").write(self.__dict__(state=state, local=local))
 
     def start(self):
-        if self.root:
-            dispatcher.connect(self.file_update, signal="file:update", sender=self.id)
-            dispatcher.connect(self.chunk_found, signal="chunk:found", sender=self.id)
-            dispatcher.connect(self.self_heal, signal="cmd:heal", sender=self.id)
+        dispatcher.connect(self.chunk_found, signal="chunk:found", sender=dispatcher.Any)
+        dispatcher.connect(self.self_heal, signal="cmd:heal", sender=self.name)
+
+        if self.type == "share":
+            dispatcher.connect(self.file_update, signal="file:update", sender=self.name)
 
             base = os.path.abspath(self.root)
             for filename in glob(self.root+"/*"):
@@ -196,7 +203,8 @@ class Repo(object):
                         "chunks": None,
                     })
 
-            self.self_heal()
+        self.self_heal()
+
 
     @property
     def missing_chunks(self):
@@ -214,39 +222,17 @@ class Repo(object):
 
     def __dict__(self, local=False, state=False):
         data = {
-            "id": self.id,
-            "files": dict([(file.filename, file.__dict__()) for file in self.files.values()])
+            "name": self.name,
+            "type": self.name,
+            "secret": self.name,
+            "peers": self.name,
+            "files": dict([(file.filename, file.__dict__(local=local, state=state)) for file in self.files.values()])
         }
         if local:
             data.update({
                 "root": self.root
             })
         return data
-
-    def file_update(self, filedata):
-        file = File.from_struct(self, filedata)
-
-        if (
-            # never seen this file before
-            (file.filename not in self.files) or
-            # new version of file we've seen before
-            (file.timestamp > self.files[file.filename].timestamp)
-        ):
-            self.files[file.filename] = file
-
-            if file.deleted:
-                file.log("deleted")
-                if os.path.exists(file.fullpath):
-                    os.unlink(file.fullpath)
-            else:
-                if os.path.exists(file.fullpath):
-                    file.log("updated")
-                else:
-                    file.log("created")
-
-        else:
-            # old version of file we've seen before
-            pass
 
     def chunk_found(self, chunk_id, data):
         self.log("Trying to insert chunk %s into files" % chunk_id)
@@ -273,3 +259,32 @@ class Repo(object):
     def log(self, msg):
         log("[%s] %s" % (self.id[:10], msg))
 
+
+    def file_update(self, filedata):
+        file = File.from_struct(self, filedata)
+
+        if (
+            # never seen this file before
+            (file.filename not in self.files) or
+            # new version of file we've seen before
+            (file.timestamp > self.files[file.filename].timestamp)
+        ):
+            self.files[file.filename] = file
+
+            if file.deleted:
+                file.log("deleted")
+                if os.path.exists(file.fullpath):
+                    os.unlink(file.fullpath)
+            else:
+                if os.path.exists(file.fullpath):
+                    file.log("updated")
+                else:
+                    file.log("created")
+
+        else:
+            # old version of file we've seen before
+            pass
+
+
+if __name__ == "__main__":
+    r = FileRepo("My Test Repo", "./test-repo.chunker", "./test-repo")
