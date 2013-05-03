@@ -1,0 +1,73 @@
+types:
+    peer_addr
+    chunk_id = "$hash_alg:$length:$hash_hex_val"
+    repo_id = hash($guid)
+    readonly_repo_id = hash(hash($guid))
+
+network:
+    mgr = RepoSyncer(repo_id)
+    mgr._save_peers()
+    mgr._load_peers()
+    mgr.add_repo(Repo)
+    mgr.add_peer(Peer)
+    mgr.find_peers()
+    mgr.find_chunk(chunk_id)
+    mgr.found_chunk(chunk_id, data)
+    mgr.announce(action, File)
+    mgr._peers = [Peer]
+    mgr._announcements = [Announcement]
+
+    ann = Announcement(type, **args)
+    ann.timestamp = utc epoch
+
+    fetcher = Fetcher(NetManager)
+    fetcher.fetch(chunk_id)
+    	foreach mgr.peers:
+	    if peer.has_chunk(chunk_id):
+	        chunk = peer.get_chunk_data(chunk_id)
+		mgr.found_chunk(chunk_id, data)
+		break
+
+    peer = Peer((peer_addr, peer_port))
+    peer.get_known_peers(repo_id=None)
+    peer.get_repo(repo_id) -> Repo
+    peer.get_chunk_data(chunk_id)
+    peer.last_got_known_peers = Date
+
+repository:
+    repo = Repo(repo_id)
+    repo.from_struct(json)
+    repo.from_dir(dir)
+    repo.get_files() -> [File]
+    repo.to_struct() -> json
+
+    repo._known_chunks = {chunk_id: [Chunk]}
+    repo._missing_chunks = {chunk_id: [Chunk]}
+    	same chunk IDs can appear in multiple files
+
+    repo.add_chunk(chunk_id, data)
+    	iterate over all files, insert chunk in any place that it's missing
+
+    repo.local_file_added(File)
+    	add chunks to known_chunks
+	mgr.announce("add", File)
+
+    repo.remote_file_added(File)
+        check if file exists locally, add to known_chunks / missing_chunks as
+	appropriate
+
+    file = File(Repo, filename)
+    file.get_chunks() -> [Chunk]
+    file.get_missing_chunks()
+    file.hash_type = "md5"
+    file.hash = "xxxxx"
+    file.last_modified -> Date
+
+    chunk = Chunk(File)
+    chunk.file = File
+    chunk.hash_type = "md5"
+    chunk.size = 0
+    chunk.hash = "xxxxxxxx"
+    chunk.offset = 0
+    chunk.saved = False
+
