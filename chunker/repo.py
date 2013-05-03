@@ -165,10 +165,11 @@ class File(object):
 
 
 class Repo(object):
-    def __init__(self, name, filename, root):
+    def __init__(self, filename, root, name=None):
         self.filename = filename
         struct = json.loads(file(self.filename).read())
 
+        self.name = name or struct.get("name")
         self.type = struct.get("type", "share")  # static / share
         self.secret = struct.get("secret", None) # only for share
         self.peers = struct.get("peers", None)   # only for share?
@@ -287,4 +288,20 @@ class Repo(object):
 
 
 if __name__ == "__main__":
-    r = FileRepo("My Test Repo", "./test-repo.chunker", "./test-repo")
+    file("./test-repo.chunker", "w").write(json.dumps(
+        {
+            "name": "My Test Repo",
+            "type": "static",
+            "files": {
+                "hello.txt": {
+                    "chunks": [
+                    ],
+                    "timestamp": 0,
+                    "deleted": False,
+                }
+            }
+        }
+    ))
+    r = Repo("./test-repo.chunker", "./test-repo")
+    print r.get_known_chunks()
+    print r.get_missing_chunks()
