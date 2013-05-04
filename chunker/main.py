@@ -1,123 +1,72 @@
 #!/usr/bin/env python
 
-from chunker.repo import Repo
-from chunker.disk import DiskWatcher
-from chunker.net import NetManager
-
-from pydispatch import dispatcher
-
+import argparse
+import sys
 import json
 import os
-from time import time
+from glob import glob
+
+from chunker.repo import Repo
+from chunker.util import get_config_path
 
 
-class Main(object):
-    def handle_ui_alert(self, title, message):
-        print "!!!", title, message
+def chunk(args):
+    r = Repo(args.output, args.input, args.name or os.path.basename(args.input))
+    r.save(args.output, state=False)
 
-    def __init__(self):
-        dispatcher.connect(self.handle_ui_alert, signal="ui:alert", sender=dispatcher.Any)
-        dispatcher.connect(self.share_create, signal="share:create", sender=dispatcher.Any)
-        dispatcher.connect(self.share_delete, signal="share:delete", sender=dispatcher.Any)
 
-        self._config = {
-            "repos": {},
-            "peers": [],
-        }
+def add(args):
+    r = Repo(
+        args.filename,
+        args.directory,
+        args.name or os.path.basename(args.directory),
+    )
+    r.save_state()
 
-        self.load_config()
 
-        self.net_manager = NetManager()
+def heal(args):
+    known = []
+    missing = []
+    for filename in glob(get_config_path("*.state")):
+        r = Repo(filename)
+        known.extend(r.get_known_chunks())
+        missing.extend(r.get_missing_chunks())
+    r.self_heal(known_chunks=known, missing_chunks=missing)
 
-        _default_repo = None
 
-        for id, repodata in self._config["repos"].items():
-            _default_repo = repodata["id"]
-            dispatcher.send(signal="share:create", sender=self, id=id, root=repodata["root"])
+def fetch(args):
+    repos = []
+    for filename in glob(get_config_path("*.state")):
+        repos.append(Repo(filename))
+    print repos
 
-        print "'help' for help, 'quit' to quit"
-        while True:
-            cmd, _, args = raw_input("%s> " % _default_repo).partition(" ")
-            args = args.split()
-            if cmd == "quit":
-                break
-            elif cmd == "repo":
-                if args[0] == "set":
-                    _default_repo = args[1]
-                elif args[0] == "create":
-                    _default_repo = args[1]
-                    dispatcher.send(signal="share:create", sender=self, id=args[1], root=args[2])
-                elif args[0] == "delete":
-                    dispatcher.send(signal="share:delete", sender=args[1], id=args[1])
-                elif args[0] == "heal":
-                    dispatcher.send(signal="cmd:heal", sender=_default_repo)
-                else:
-                    print "unknown repo subcommand"
-            elif cmd == "file":
-                if args[0] == "create":
-                    dispatcher.send(signal="file:update", sender=_default_repo, filedata={
-                        "filename": args[1],
-                        "deleted": False,
-                        "timestamp": int(time()),
-                        "chunks": [
-                            {
-                                "length": 127622,
-                                "hash_type": "md5",
-                                "hash": "0dd18edaddf3f40818d5a4e2dfcb28c2",
-                            }
-                        ],
-                    })
-                elif args[0] == "delete":
-                    dispatcher.send(signal="file:update", sender=_default_repo, filedata={
-                        "filename": args[1],
-                        "deleted": True,
-                        "timestamp": int(time()),
-                        "chunks": [],
-                    })
-                else:
-                    print "unknown file subcommand"
-            elif cmd == "save":
-                self.save_config()
-            else:
-                print "quit - quit the app"
-                print "help - print this message"
 
-        self.save_config()
+def main():
+    parser = argparse.ArgumentParser(description="a thing")
+    subparsers = parser.add_subparsers()
 
-    def share_create(self, id, root):
-        Repo(id, root).start()
-        DiskWatcher(id, root).start()
+    p_chunk = subparsers.add_parser("chunk")
+    p_chunk.add_argument("output")
+    p_chunk.add_argument("input")
+    p_chunk.add_argument("--name")
+    p_chunk.set_defaults(func=chunk)
 
-        if id not in self._config["repos"]:
-            self._config["repos"][id] = {
-                "id": id,
-                "root": root,
-                "peers": [],
-            }
+    p_heal = subparsers.add_parser("heal")
+    #p_heal.add_argument("filename")
+    #p_heal.add_argument("directory")
+    p_heal.set_defaults(func=heal)
 
-    def share_delete(self, id):
-        if id in self._config["repos"]:
-            del self._config["repos"][id]
+    p_add = subparsers.add_parser("add")
+    p_add.add_argument("--name")
+    p_add.add_argument("filename")
+    p_add.add_argument("directory")
+    p_add.set_defaults(func=add)
 
-    def _mkconfigdir(self):
-        config_dir = os.path.expanduser("~/.config/chunker")
-        if not os.path.exists(config_dir):
-            os.makedirs(config_dir)
+    p_fetch = subparsers.add_parser("fetch")
+    p_fetch.set_defaults(func=fetch)
 
-    def get_config_path(self):
-        return os.path.expanduser("~/.config/chunker/config.json")
-
-    def load_config(self):
-        if os.path.exists(self.get_config_path()):
-            data = file(self.get_config_path()).read()
-            self._config.update(json.loads(data))
-
-    def save_config(self):
-        self._mkconfigdir()
-        #self._config["repos"] = [share.repo.__dict__(local=True) for share in self.shares]
-        data = json.dumps(self._config, indent=4)
-        file(self.get_config_path(), "w").write(data)
-
+    args = parser.parse_args()
+    args.func(args)
 
 if __name__ == "__main__":
-    Main()
+    sys.exit(main())

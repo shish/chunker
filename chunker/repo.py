@@ -1,14 +1,16 @@
 import os
 import hashlib
+import json
 from glob import glob
 from datetime import datetime
 from pydispatch import dispatcher
 
-from chunker.util import log
+from chunker.util import log, get_config_path, heal
 
 
 HASH_TYPE = "md5"
 HASH = hashlib.md5
+
 
 def get_chunks(fullpath, parent=None):
     bite_size = 1024 * 1024
@@ -34,7 +36,7 @@ def get_chunks(fullpath, parent=None):
             })
         offset = offset + len(data)
     return chunks
-        
+
 
 class Chunk(object):
     def __init__(self, file, offset, length, hash_type, hash, saved=False):
@@ -45,12 +47,15 @@ class Chunk(object):
         self.hash = hash
         self.saved = saved
 
-    def __dict__(self):
-        return {
+    def __dict__(self, state=False):
+        data = {
                 "hash_type": self.hash_type,
                 "length": self.length,
                 "hash": self.hash,
         }
+        if state:
+            data["saved"] = self.saved
+        return data
 
     def __repr__(self):
         return self.id
@@ -92,7 +97,12 @@ class Chunk(object):
             # set file timestamp to new metadata timestamp
             self.file.log("File complete, updating timestamp")
             os.utime(self.file.fullpath, (atime, self.file.timestamp))
-            dispatcher.send(signal="ui:alert", sender=self.file.repo.id, title="Download Complete", message=self.file.filename)
+            dispatcher.send(
+                signal="ui:alert",
+                sender=self.file.repo.name,
+                title="Download Complete",
+                message=self.file.filename
+            )
         else:
             # set file timestamp or old metadata timestamp
             os.utime(self.file.fullpath, (atime, mtime))
@@ -115,10 +125,10 @@ class File(object):
             self.timestamp = int(os.stat(self.fullpath).st_mtime)
 
     @staticmethod
-    def from_struct(repo, data):
-        file = File(repo, data["filename"], [])
+    def from_struct(repo, filename, data):
+        file = File(repo, filename, [])
         file.deleted = data.get("deleted", False)
-        file.timestamp = data["timestamp"]
+        file.timestamp = data.get("timestamp", 0)
 
         if data.get("chunks"):
             offset = 0
@@ -152,10 +162,9 @@ class File(object):
     def is_complete(self):
         return self.missing_chunks == []
 
-    def __dict__(self):
+    def __dict__(self, state=False):
         return {
-            "filename": self.filename,
-            "chunks": [chunk.__dict__() for chunk in self.chunks],
+            "chunks": [chunk.__dict__(state=state) for chunk in self.chunks],
             "timestamp": self.timestamp,
             "deleted": self.deleted,
         }
@@ -165,29 +174,56 @@ class File(object):
 
 
 class Repo(object):
-    def __init__(self, filename, root, name=None):
+    def __init__(self, filename, root=None, name=None):
         self.filename = filename
         struct = json.loads(file(self.filename).read())
 
-        self.name = name or struct.get("name")
-        self.type = struct.get("type", "share")  # static / share
-        self.secret = struct.get("secret", None) # only for share
-        self.peers = struct.get("peers", None)   # only for share?
+        self.name = name or struct.get("name") or os.path.basname(filename)
+        self.type = struct.get("type", "static")  # static / share
+        self.secret = struct.get("secret", None)  # only for share
+        self.peers = struct.get("peers", [])      # only for share?
+        self.root = root or struct.get("root")
+        self.files = dict([
+            (filename, File.from_struct(self, filename, data))
+            for filename, data
+            in struct.get("files", {}).items()
+        ])
 
-        self.root = root
-        self.files = dict([(filename, File.from_struct(self, data)) for filename, data in struct.get("files", {}).items()])
+    def __dict__(self, state=False):
+        data = {
+            "name": self.name,
+            "type": self.type,
+            "secret": self.secret,
+            "peers": self.peers,
+            "files": dict([
+                (filename, file.__dict__(state=state))
+                for filename, file
+                in self.files.items()
+            ])
+        }
+        if state:
+            data.update({
+                "root": self.root
+            })
+        return data
 
-    def save(self, filename=None, state=None, local=None):
+    def __repr__(self):
+        return "Repo(%r, %r, %r)" % (self.filename, self.root, self.name)
+
+    def save_state(self):
+        self.save(get_config_path(HASH(self.name).hexdigest()+".state"), True)
+
+    def save(self, filename=None, state=False):
         if not filename:
             filename = self.filename
-        file(filename, "w").write(self.__dict__(state=state, local=local))
+        file(filename, "w").write(json.dumps(self.__dict__(state=state), indent=4))
 
     def start(self):
         dispatcher.connect(self.chunk_found, signal="chunk:found", sender=dispatcher.Any)
         dispatcher.connect(self.self_heal, signal="cmd:heal", sender=self.name)
 
         if self.type == "share":
-            dispatcher.connect(self.file_update, signal="file:update", sender=self.name)
+            dispatcher.connect(self.update, signal="file:update", sender=self.name)
 
             base = os.path.abspath(self.root)
             for filename in glob(self.root+"/*"):
@@ -206,34 +242,17 @@ class Repo(object):
 
         self.self_heal()
 
-
-    @property
-    def missing_chunks(self):
+    def get_missing_chunks(self):
         l = []
         for file in self.files.values():
             l.extend(file.missing_chunks)
         return l
 
-    @property
-    def known_chunks(self):
+    def get_known_chunks(self):
         l = []
         for file in self.files.values():
             l.extend(file.known_chunks)
         return l
-
-    def __dict__(self, local=False, state=False):
-        data = {
-            "name": self.name,
-            "type": self.name,
-            "secret": self.name,
-            "peers": self.name,
-            "files": dict([(file.filename, file.__dict__(local=local, state=state)) for file in self.files.values()])
-        }
-        if local:
-            data.update({
-                "root": self.root
-            })
-        return data
 
     def chunk_found(self, chunk_id, data):
         self.log("Trying to insert chunk %s into files" % chunk_id)
@@ -245,23 +264,17 @@ class Repo(object):
         # this could be much more efficient -
         # sort the lists, then go through each list once linearly
         if known_chunks is None:
-            known_chunks = self.known_chunks
+            known_chunks = self.get_known_chunks()
         if missing_chunks is None:
-            missing_chunks = self.missing_chunks
+            missing_chunks = self.get_missing_chunks()
 
-        if known_chunks and missing_chunks:
-            self.log("Attempting self-healing")
-            for known_chunk in known_chunks:
-                for missing_chunk in missing_chunks:
-                    if known_chunk.id == missing_chunk.id:
-                        self.log("Copying chunk from %s to %s" % (known_chunk.file.filename, missing_chunk.file.filename))
-                        missing_chunk.save_data(known_chunk.get_data())
+        heal(known_chunks, missing_chunks)
 
     def log(self, msg):
-        log("[%s] %s" % (self.id[:10], msg))
+        log("[%10.10s] %s" % (self.name, msg))
 
 
-    def file_update(self, filedata):
+    def update(self, filedata):
         file = File.from_struct(self, filedata)
 
         if (
@@ -293,15 +306,38 @@ if __name__ == "__main__":
             "name": "My Test Repo",
             "type": "static",
             "files": {
-                "hello.txt": {
+                "hello1.txt": {
                     "chunks": [
+                        {
+                            "hash_type": "md5",
+                            "hash": "5a8dd3ad0756a93ded72b823b19dd877",
+                            "length": 6,
+                        }
+                    ],
+                    "timestamp": 0,
+                    "deleted": False,
+                },
+                "hello2.txt": {
+                    "chunks": [
+                        {
+                            "hash_type": "md5",
+                            "hash": "5a8dd3ad0756a93ded72b823b19dd877",
+                            "length": 6,
+                        }
                     ],
                     "timestamp": 0,
                     "deleted": False,
                 }
             }
         }
-    ))
+    , indent=4))
+    #os.makedirs("test-repo")
+    file("test-repo/hello1.txt", "w").write("hello!")
     r = Repo("./test-repo.chunker", "./test-repo")
     print r.get_known_chunks()
     print r.get_missing_chunks()
+    r.self_heal()
+    print r.get_known_chunks()
+    print r.get_missing_chunks()
+    r.save_state()
+
