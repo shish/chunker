@@ -5,7 +5,7 @@ from glob import glob
 from datetime import datetime
 from pydispatch import dispatcher
 
-from chunker.util import log, get_config_path, heal
+from chunker.util import log, get_config_path, heal, ts_round
 
 
 HASH_TYPE = "md5"
@@ -13,6 +13,15 @@ HASH = hashlib.md5
 
 
 def get_chunks(fullpath, parent=None):
+    """
+    Split a file into chunks that are likely to be common between files
+
+    ie, "xxxxyyzzzz" -> "xxxx", "yy", "zzzz"
+        "xxxxzzzz"   -> "xxxx", "zzzz"
+
+    TODO: actually do this (currently we just split into 1MB parts)
+          gzip --rsyncable seems to have a pretty sensible approach
+    """
     bite_size = 1024 * 1024
     chunks = []
     eof = False
@@ -125,7 +134,7 @@ class File(object):
         # this is a new file locally
         if chunks is None and os.path.exists(self.fullpath):
             self.chunks = get_chunks(self.fullpath, self)
-            self.timestamp = int(os.stat(self.fullpath).st_mtime)
+            self.timestamp = ts_round(os.stat(self.fullpath).st_mtime)
 
     @staticmethod
     def from_struct(repo, filename, data):
@@ -179,7 +188,10 @@ class File(object):
 class Repo(object):
     def __init__(self, filename, root=None, name=None):
         self.filename = filename
-        struct = json.loads(file(self.filename).read())
+        if os.path.exists(self.filename):
+            struct = json.loads(file(self.filename).read())
+        else:
+            struct = {}
 
         self.name = name or struct.get("name") or os.path.basname(filename)
         self.type = struct.get("type", "static")  # static / share
@@ -191,6 +203,12 @@ class Repo(object):
             for filename, data
             in struct.get("files", {}).items()
         ])
+
+        # if we're creating a static chunkfile, or connecting to a share where
+        # we can add files, then add our local files to the chunkfile
+        if (self.type == "static" and not struct) or (self.type == "share"):
+            dispatcher.connect(self.update, signal="file:update", sender=self.name)
+            self.add_local_files()
 
     def __dict__(self, state=False):
         data = {
@@ -224,26 +242,28 @@ class Repo(object):
     def start(self):
         dispatcher.connect(self.chunk_found, signal="chunk:found", sender=dispatcher.Any)
         dispatcher.connect(self.self_heal, signal="cmd:heal", sender=self.name)
+        dispatcher.connect(self.update, signal="file:update", sender=self.name)
 
         if self.type == "share":
-            dispatcher.connect(self.update, signal="file:update", sender=self.name)
-
-            base = os.path.abspath(self.root)
-            for filename in glob(self.root+"/*"):
-                path = os.path.abspath(filename)
-                relpath = path[len(base)+1:]
-                if (
-                    relpath not in self.files or  # file on disk that we haven't seen before
-                    int(os.stat(path).st_mtime) > self.files[relpath].timestamp  # update for a file we know about
-                ):
-                    dispatcher.send(signal="file:created", sender=self.id, filedata={
-                        "filename": relpath,
-                        "deleted": False,
-                        "timestamp": int(os.stat(path).st_mtime),
-                        "chunks": None,
-                    })
+            self.add_local_files()
 
         self.self_heal()
+
+    def add_local_files(self):
+        base = os.path.abspath(self.root)
+        for filename in glob(self.root+"/*"):
+            path = os.path.abspath(filename)
+            relpath = path[len(base)+1:]
+            if (
+                relpath not in self.files or  # file on disk that we haven't seen before
+                ts_round(os.stat(path).st_mtime) > self.files[relpath].timestamp  # update for a file we know about
+            ):
+                dispatcher.send(signal="file:update", sender=self.name, filedata={
+                    "filename": relpath,
+                    "deleted": False,
+                    "timestamp": ts_round(os.stat(path).st_mtime),
+                    "chunks": None,
+                })
 
     def get_missing_chunks(self):
         l = []
@@ -278,7 +298,7 @@ class Repo(object):
 
 
     def update(self, filedata):
-        file = File.from_struct(self, filedata)
+        file = File.from_struct(self, filedata["filename"], filedata)
 
         if (
             # never seen this file before
@@ -296,7 +316,16 @@ class Repo(object):
                 if os.path.exists(file.fullpath):
                     file.log("updated")
                 else:
+                    with open(file.fullpath, "a"):
+                        if file.is_complete():
+                            # mark as finished already
+                            os.utime(file.fullpath, (file.timestamp, file.timestamp))
+                        else:
+                            # mark as incomplete
+                            os.utime(file.fullpath, (0, 0))
                     file.log("created")
+
+            self.save_state()
 
         else:
             # old version of file we've seen before
