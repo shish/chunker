@@ -119,6 +119,9 @@ class File(object):
         self.chunks = chunks
         self.deleted = False
 
+        if not os.path.abspath(self.fullpath).startswith(os.path.abspath(self.repo.root)):
+            raise Exception("Tried to create a file outside the repository: %s" % self.filename)
+
         # this is a new file locally
         if chunks is None and os.path.exists(self.fullpath):
             self.chunks = get_chunks(self.fullpath, self)
