@@ -41,6 +41,25 @@ def fetch(args):
     print repos
 
 
+def stat(args):
+    r = Repo(args.filename, args.directory, os.path.basename(args.filename))
+    chunks = r.get_known_chunks()
+    seen = {}
+    for chunk in chunks:
+        if chunk.id not in seen:
+            seen[chunk.id] = 0
+        seen[chunk.id] = seen[chunk.id] + 1
+    import pprint
+    pprint.pprint(seen)
+
+    saved = 0
+    for id, count in seen.items():
+        dupes = count - 1
+        type, size, hash = id.split(":")
+        saved = saved + int(size) * dupes
+    print "Saved %d bytes from deduplication" % saved
+
+
 def main():
     parser = argparse.ArgumentParser(description="a thing")
     subparsers = parser.add_subparsers()
@@ -64,6 +83,11 @@ def main():
 
     p_fetch = subparsers.add_parser("fetch")
     p_fetch.set_defaults(func=fetch)
+
+    p_stat = subparsers.add_parser("stat")
+    p_stat.add_argument("filename")
+    p_stat.add_argument("directory")
+    p_stat.set_defaults(func=stat)
 
     args = parser.parse_args()
     args.func(args)
