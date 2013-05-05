@@ -120,69 +120,123 @@ class Chunk(object):
         self.file.log("[%s:%s] %s" % (self.offset, self.length, msg))
 
 
-class File(object):
-    def __init__(self, repo, filename, chunks=None):
-        self.repo = repo
-        self.filename = filename
-        self.fullpath = os.path.join(self.repo.root, self.filename)
-        self.chunks = chunks
+class FileVersion(object):
+    def __init__(self):
+        self.timestamp = 0
         self.deleted = False
+        self.chunks = []
+        self.username = ""
+        self.hostname = ""
 
-        if not os.path.abspath(self.fullpath).startswith(os.path.abspath(self.repo.root)):
-            raise Exception("Tried to create a file outside the repository: %s" % self.filename)
+    def __cmp__(self, other):
+        return cmp(self.timestamp, other.timestamp)
 
-        # this is a new file locally
-        if chunks is None and os.path.exists(self.fullpath):
-            self.chunks = get_chunks(self.fullpath, self)
-            self.timestamp = ts_round(os.stat(self.fullpath).st_mtime)
+    def is_complete(self):
+        return self.get_missing_chunks() == []
 
-    @staticmethod
-    def from_struct(repo, filename, data):
-        file = File(repo, filename, [])
-        file.deleted = data.get("deleted", False)
-        file.timestamp = data.get("timestamp", 0)
-
-        if data.get("chunks"):
-            offset = 0
-            for chunkdata in data["chunks"]:
-                file.chunks.append(
-                    Chunk(file, offset, chunkdata["length"], chunkdata["hash_type"], chunkdata["hash"])
-                )
-                offset = offset + chunkdata["length"]
-            for chunk in file.chunks:
-                chunk.validate()
-        elif os.path.exists(file.fullpath):
-            file.chunks = get_chunks(file.fullpath, file)
-        return file
-
-    @property
-    def missing_chunks(self):
+    def get_missing_chunks(self):
         l = []
         for chunk in self.chunks:
             if not chunk.saved:
                 l.append(chunk)
         return l
 
-    @property
-    def known_chunks(self):
+    def get_known_chunks(self):
         l = []
         for chunk in self.chunks:
             if chunk.saved:
                 l.append(chunk)
         return l
 
-    def is_complete(self):
-        return self.missing_chunks == []
-
-    def __dict__(self, state=False):
-        return {
+    def __dict__(self, state=False, history=False):
+        data = {
             "chunks": [chunk.__dict__(state=state) for chunk in self.chunks],
             "timestamp": self.timestamp,
             "deleted": self.deleted,
         }
+        if history:
+            data.update({
+                "username": self.username,
+                "hostname": self.hostname,
+            })
+        return data
+
+    @staticmethod
+    def from_struct(file, versionData):
+        version = FileVersion()
+        version.deleted = versionData.get("deleted", False)
+        version.timestamp = versionData.get("timestamp", 0)
+        version.username = versionData.get("username", "Origin User")
+        version.hostname = versionData.get("hostname", "Origin Host")
+
+        if versionData.get("chunks") is not None:
+            offset = 0
+            for chunkData in versionData["chunks"]:
+                version.chunks.append(
+                    Chunk(file, offset, chunkData["length"], chunkData["hash_type"], chunkData["hash"])
+                )
+                offset = offset + chunkData["length"]
+            for chunk in version.chunks:
+                chunk.validate()
+        elif os.path.exists(file.fullpath):
+            version.chunks = get_chunks(file.fullpath, version)
+        return version
+
+
+
+class File(object):
+    def __init__(self, repo, filename, chunks=None):
+        self.repo = repo
+        self.filename = filename
+        self.fullpath = os.path.join(self.repo.root, self.filename)
+        self.versions = []
+
+        if not os.path.abspath(self.fullpath).startswith(os.path.abspath(self.repo.root)):
+            raise Exception("Tried to create a file outside the repository: %s" % self.filename)
+
+    @staticmethod
+    def from_struct(repo, filename, data):
+        assert(isinstance(repo, Repo))
+        assert(isinstance(filename, basestring))
+        assert(isinstance(data, dict))
+
+        file = File(repo, filename, [])
+        for versionData in data["versions"]:
+            version = FileVersion.from_struct(file, versionData)
+            file.versions.append(version)
+        return file
+
+    def __dict__(self, state=False, history=False):
+        data = {}
+        if history:
+            data["versions"] = [version.__dict__(state=state, history=history) for version in self.versions]
+        else:
+            data["versions"] = [self.current_version().__dict__(state=state, history=history)]
+        return data
 
     def log(self, msg):
         self.repo.log("[%s] %s" % (self.filename, msg))
+
+    # proxy version-specific attributes to the latest version
+    def current_version(self):
+        return self.versions[-1]
+
+    def get_missing_chunks(self):
+        return self.current_version().get_missing_chunks()
+
+    def get_known_chunks(self):
+        return self.current_version().get_known_chunks()
+
+    @property
+    def timestamp(self):
+        return self.current_version().timestamp
+
+    @property
+    def deleted(self):
+        return self.current_version().deleted
+
+    def is_complete(self):
+        return self.current_version().is_complete()
 
 
 class Repo(object):
@@ -193,7 +247,7 @@ class Repo(object):
         else:
             struct = {}
 
-        self.name = name or struct.get("name") or os.path.basname(filename)
+        self.name = name or struct.get("name") or os.path.basename(filename)
         self.type = struct.get("type", "static")  # static / share
         self.secret = struct.get("secret", None)  # only for share
         self.peers = struct.get("peers", [])      # only for share?
@@ -258,23 +312,24 @@ class Repo(object):
                 relpath not in self.files or  # file on disk that we haven't seen before
                 ts_round(os.stat(path).st_mtime) > self.files[relpath].timestamp  # update for a file we know about
             ):
-                dispatcher.send(signal="file:update", sender=self.name, filedata={
-                    "filename": relpath,
-                    "deleted": False,
-                    "timestamp": ts_round(os.stat(path).st_mtime),
-                    "chunks": None,
+                dispatcher.send(signal="file:update", sender=self.name, filename=relpath, filedata={
+                    "versions": [{
+                        "deleted": False,
+                        "timestamp": ts_round(os.stat(path).st_mtime),
+                        "chunks": None,
+                    }]
                 })
 
     def get_missing_chunks(self):
         l = []
         for file in self.files.values():
-            l.extend(file.missing_chunks)
+            l.extend(file.get_missing_chunks())
         return l
 
     def get_known_chunks(self):
         l = []
         for file in self.files.values():
-            l.extend(file.known_chunks)
+            l.extend(file.get_known_chunks())
         return l
 
     def chunk_found(self, chunk_id, data):
@@ -296,40 +351,34 @@ class Repo(object):
     def log(self, msg):
         log("[%10.10s] %s" % (self.name, msg))
 
+    def update(self, filename, filedata):
+        file = File.from_struct(self, filename, filedata)
 
-    def update(self, filedata):
-        file = File.from_struct(self, filedata["filename"], filedata)
-
-        if (
-            # never seen this file before
-            (file.filename not in self.files) or
-            # new version of file we've seen before
-            (file.timestamp > self.files[file.filename].timestamp)
-        ):
+        if file.filename not in self.files:
             self.files[file.filename] = file
-
-            if file.deleted:
-                file.log("deleted")
-                if os.path.exists(file.fullpath):
-                    os.unlink(file.fullpath)
-            else:
-                if os.path.exists(file.fullpath):
-                    file.log("updated")
-                else:
-                    with open(file.fullpath, "a"):
-                        if file.is_complete():
-                            # mark as finished already
-                            os.utime(file.fullpath, (file.timestamp, file.timestamp))
-                        else:
-                            # mark as incomplete
-                            os.utime(file.fullpath, (0, 0))
-                    file.log("created")
-
-            self.save_state()
-
         else:
-            # old version of file we've seen before
-            pass
+            self.files[file.filename].versions.extend(file.versions)
+
+        self.files[file.filename].versions.sort()
+
+        if file.deleted:
+            file.log("deleted")
+            if os.path.exists(file.fullpath):
+                os.unlink(file.fullpath)
+        else:
+            if os.path.exists(file.fullpath):
+                file.log("updated")
+            else:
+                with open(file.fullpath, "a"):
+                    if file.is_complete():
+                        # mark as finished already
+                        os.utime(file.fullpath, (file.timestamp, file.timestamp))
+                    else:
+                        # mark as incomplete
+                        os.utime(file.fullpath, (0, 0))
+                file.log("created")
+
+        self.save_state()
 
 
 if __name__ == "__main__":
