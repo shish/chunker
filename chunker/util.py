@@ -22,13 +22,22 @@ def log(msg):
 
 
 def heal(known_chunks, missing_chunks):
+    # this could be much more efficient by sorting the lists
+    # and runningn along both of them at once
+    #   O(N*M) -> O(max(N, M))
     if known_chunks and missing_chunks:
         log("Attempting self-healing")
+        saved = 0
         for known_chunk in known_chunks:
             for missing_chunk in missing_chunks:
                 if known_chunk.id == missing_chunk.id:
                     log("Copying chunk from %s to %s" % (known_chunk.file.filename, missing_chunk.file.filename))
                     missing_chunk.save_data(known_chunk.get_data())
+                    saved = saved + known_chunk.length
+        return saved
+    else:
+        log("Can't self-heal (%d known vs %d unknown)" % (len(known_chunks), len(missing_chunks)))
+        return -1
 
 
 def ts_round(time):
