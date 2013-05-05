@@ -1,8 +1,10 @@
 import os
 import hashlib
 import json
+from mmap import mmap
 from glob import glob
 from datetime import datetime
+from collections import deque
 from pydispatch import dispatcher
 
 from chunker.util import log, get_config_path, heal, ts_round
@@ -22,6 +24,47 @@ def get_chunks(fullpath, parent=None):
     TODO: actually do this (currently we just split into 1MB parts)
           gzip --rsyncable seems to have a pretty sensible approach
     """
+    return get_chunks_v2(fullpath, parent)
+
+
+def get_chunks_v2(fullpath, parent=None):
+    chunks = []
+    offset = 0
+
+    checksum = 0
+    window_size = 4096
+    magic = 4096
+
+    fp = file(fullpath, "r+b")
+    mm = mmap(fp.fileno(), 0)
+
+    for i in xrange(0, len(mm)):
+        if i % (1024*32) == 0:
+            print ".",
+            if i % (1024*32*32) == 0:
+                print "\n",
+        checksum = checksum + ord(mm[i])
+        if i >= window_size:
+            checksum = checksum - ord(mm[i - window_size])
+        border_reached = (checksum % magic == 0)
+
+        if border_reached or (i == len(mm) - 1):
+            data = mm[offset:i]
+            if parent:
+                chunks.append(Chunk(parent, offset, len(data), HASH_TYPE, HASH(data).hexdigest(), True))
+            else:
+                chunks.append({
+                    "hash_type": HASH_TYPE,
+                    "hash": HASH(data).hexdigest(),
+                    "offset": offset,
+                    "length": len(data),
+                    "saved": True,
+                })
+            offset = offset + len(data)
+    return chunks
+
+
+def get_chunks_v1(fullpath, parent=None):
     bite_size = 1024 * 1024
     chunks = []
     eof = False
