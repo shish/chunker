@@ -1,6 +1,7 @@
 from datetime import datetime
 import os
 import math
+import sys
 
 
 config_dir = os.path.expanduser("~/.config/chunker")
@@ -17,7 +18,7 @@ def get_config_path(filename):
 
 
 def log(msg):
-    print datetime.now().strftime("%Y-%m-%d %H:%M:%S"), msg
+    sys.stderr.write("%s %s\n" % (datetime.now().strftime("%Y-%m-%d %H:%M:%S"), msg))
 
 
 def heal(known_chunks, missing_chunks):
