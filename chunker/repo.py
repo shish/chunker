@@ -56,7 +56,7 @@ class Chunk(object):
         self.hash = hash
         self.saved = saved
 
-    def __dict__(self, state=False):
+    def to_struct(self, state=False):
         data = {
                 "hash_type": self.hash_type,
                 "length": self.length,
@@ -148,19 +148,6 @@ class FileVersion(object):
                 l.append(chunk)
         return l
 
-    def __dict__(self, state=False, history=False):
-        data = {
-            "chunks": [chunk.__dict__(state=state) for chunk in self.chunks],
-            "timestamp": self.timestamp,
-            "deleted": self.deleted,
-        }
-        if history:
-            data.update({
-                "username": self.username,
-                "hostname": self.hostname,
-            })
-        return data
-
     @staticmethod
     def from_struct(file, versionData):
         version = FileVersion()
@@ -181,6 +168,19 @@ class FileVersion(object):
         elif os.path.exists(file.fullpath):
             version.chunks = get_chunks(file.fullpath, version)
         return version
+
+    def to_struct(self, state=False, history=False):
+        data = {
+            "chunks": [chunk.to_struct(state=state) for chunk in self.chunks],
+            "timestamp": self.timestamp,
+            "deleted": self.deleted,
+        }
+        if history:
+            data.update({
+                "username": self.username,
+                "hostname": self.hostname,
+            })
+        return data
 
 
 
@@ -206,12 +206,12 @@ class File(object):
             file.versions.append(version)
         return file
 
-    def __dict__(self, state=False, history=False):
+    def to_struct(self, state=False, history=False):
         data = {}
         if history:
-            data["versions"] = [version.__dict__(state=state, history=history) for version in self.versions]
+            data["versions"] = [version.to_struct(state=state, history=history) for version in self.versions]
         else:
-            data["versions"] = [self.current_version().__dict__(state=state, history=history)]
+            data["versions"] = [self.current_version().to_struct(state=state, history=history)]
         return data
 
     def log(self, msg):
@@ -264,14 +264,14 @@ class Repo(object):
             dispatcher.connect(self.update, signal="file:update", sender=self.name)
             self.add_local_files()
 
-    def __dict__(self, state=False):
+    def to_struct(self, state=False):
         data = {
             "name": self.name,
             "type": self.type,
             "secret": self.secret,
             "peers": self.peers,
             "files": dict([
-                (filename, file.__dict__(state=state))
+                (filename, file.to_struct(state=state))
                 for filename, file
                 in self.files.items()
             ])
@@ -291,7 +291,7 @@ class Repo(object):
     def save(self, filename=None, state=False):
         if not filename:
             filename = self.filename
-        file(filename, "w").write(json.dumps(self.__dict__(state=state), indent=4))
+        file(filename, "w").write(json.dumps(self.to_struct(state=state), indent=4))
 
     def start(self):
         dispatcher.connect(self.chunk_found, signal="chunk:found", sender=dispatcher.Any)
