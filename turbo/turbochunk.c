@@ -88,13 +88,14 @@ void chunk_v1(char *data, int size) {
 	//printf("%d bytes / %d chunks = %d bytes per chunk\n", size, n, size / n);
 }
 
+
 /*
  * A version of Rusty's algorithm with a larger window
  * and min / max block sizes; still more variable than
  * I'd like
  */
 void chunk_v2(char *data, int size) {
-	int WINDOW_SIZE = (1024*16);
+	int WINDOW_SIZE = (1024*4);
 	int CHUNK_MIN = WINDOW_SIZE;
 	int CHUNK_MAX = 1024*1024;
 
@@ -102,7 +103,6 @@ void chunk_v2(char *data, int size) {
 	int sum = 0;
 	int offset = 0;
 	int n = 0;
-	char hashbuf[128];
 
 	for(i=0; i<size; i++) {
 		sum = sum + data[i];
@@ -163,8 +163,7 @@ void chunk_v3(char *data, int size) {
 	int n = 0;
 	int offset = 0;
 	int i;
-	int sum = adler64(data, V3_BLOCK_SIZE);
-	char hashbuf[128];
+	long sum = adler64(data, V3_BLOCK_SIZE);
 
 	for(i=0; i<size - V3_BLOCK_SIZE; i++) {
 		if(sum % TARGET_CHUNK_SIZE == 0) {
@@ -182,16 +181,25 @@ void chunk_v3(char *data, int size) {
 	//printf("%d bytes / %d chunks = %d bytes per chunk\n", size, n, size / n);
 }
 
+
+/*
+ * The main thing: read a file, pass it to the chunking algorithm
+ */
 int main(int argc, char *argv[]) {
 	/*
 	 * Check args
 	 */
+	char *method = "1";
+
 	if(argc == 1) {
 		printf("Usage: %s <filename> [hash alg]\n", argv[0]);
 		return 1;
 	}
-	if(argc == 3) {
+	if(argc >= 3) {
 		hash_type = argv[2];
+	}
+	if(argc >= 4) {
+		method = argv[3];
 	}
 
 	/*
@@ -213,7 +221,15 @@ int main(int argc, char *argv[]) {
 	/*
 	 * Find the checksum
 	 */
-	chunk_v1(memblock, fdstat.st_size);
+	if(strcmp(method, "1") == 0) {
+		chunk_v1(memblock, fdstat.st_size);
+	}
+	if(strcmp(method, "2") == 0) {
+		chunk_v2(memblock, fdstat.st_size);
+	}
+	if(strcmp(method, "3") == 0) {
+		chunk_v3(memblock, fdstat.st_size);
+	}
 	return 0;
 }
 
