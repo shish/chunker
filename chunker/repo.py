@@ -24,50 +24,24 @@ def get_chunks(fullpath, parent=None):
     ie, "xxxxyyzzzz" -> "xxxx", "yy", "zzzz"
         "xxxxzzzz"   -> "xxxx", "zzzz"
 
-    TODO: actually do this (currently we just split into 1MB parts)
-          gzip --rsyncable seems to have a pretty sensible approach
+    TODO: actually do this. See the turbochunker directory for various attempts
+    at doing this with different algorithms. For now we stick with the simple
+    "1MB chunks" method, which can be changed later.
+
+    Heuristic methods are all likely to be worse than "manual" chunking - by
+    which I mean if you know all the files in advance (eg if you have a folder
+    full of linux .isos) then you can write a program to look at all of the
+    files at once and detect their common parts precisely.
+
+    The implementation of the chunker can be changed fairly freely -- as long
+    as one source (eg, "debian") sticks to one method, we should see benefits.
+    (The odds of a linux ISO having chunks in common with a movie is fairly
+    minimal)
+
+    There is some benefit to having a standard scheme though - if two groups
+    of people are sharing the same files, but they don't know about each other,
+    then having the same chunks will allow them to all work together.
     """
-    return get_chunks_v2(fullpath, parent)
-
-
-def get_chunks_v2(fullpath, parent=None):
-    chunks = []
-    offset = 0
-
-    checksum = 0
-    window_size = 4096
-    magic = 4096
-
-    fp = file(fullpath, "r+b")
-    mm = mmap(fp.fileno(), 0)
-
-    for i in xrange(0, len(mm)):
-        if i % (1024*32) == 0:
-            print ".",
-            if i % (1024*32*32) == 0:
-                print "\n",
-        checksum = checksum + ord(mm[i])
-        if i >= window_size:
-            checksum = checksum - ord(mm[i - window_size])
-        border_reached = (checksum % magic == 0)
-
-        if border_reached or (i == len(mm) - 1):
-            data = mm[offset:i]
-            if parent:
-                chunks.append(Chunk(parent, offset, len(data), HASH_TYPE, hashlib.new(HASH_TYPE, data).hexdigest(), True))
-            else:
-                chunks.append({
-                    "hash_type": HASH_TYPE,
-                    "hash": hashlib.new(HASH_TYPE, data).hexdigest(),
-                    "offset": offset,
-                    "length": len(data),
-                    "saved": True,
-                })
-            offset = offset + len(data)
-    return chunks
-
-
-def get_chunks_v1(fullpath, parent=None):
     bite_size = 1024 * 1024
     chunks = []
     eof = False
