@@ -167,20 +167,14 @@ void chunk_v3(char *data, int size) {
 	int i;
 	long sum = adler64(data, V3_BLOCK_SIZE);
 
-	for(i=0; i<size - V3_BLOCK_SIZE; i++) {
-		if(sum % TARGET_CHUNK_SIZE == 0) {
+	for(i=V3_BLOCK_SIZE; i<size; i++) {
+		if((sum % TARGET_CHUNK_SIZE == 0) || (i == size - 1)) {
 			print_chunk(data, offset, i);
 			offset = i;
 			n++;
 		}
-		if(i + V3_BLOCK_SIZE > size) {
-			sum = rolladler(data[i], data[i + V3_BLOCK_SIZE]);
-		}
-		else {
-			sum = rolladler(data[i], 0);
-		}
+		sum = rolladler(data[i - V3_BLOCK_SIZE], data[i]);
 	}
-	//printf("%d bytes / %d chunks = %d bytes per chunk\n", size, n, size / n);
 }
 
 
