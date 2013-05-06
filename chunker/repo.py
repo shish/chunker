@@ -1,5 +1,6 @@
 import os
 import hashlib
+import sys
 import json
 from mmap import mmap
 from glob import glob
@@ -7,10 +8,13 @@ from datetime import datetime
 from collections import deque
 from pydispatch import dispatcher
 
+if sys.version_info < (3, 4):
+   import sha3
+
 from chunker.util import log, get_config_path, heal, ts_round
 
 
-HASH_TYPE = "md5"
+HASH_TYPE = "sha3_256"
 
 
 def get_chunks(fullpath, parent=None):
