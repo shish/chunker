@@ -6,9 +6,14 @@
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <fcntl.h>
+#include <unistd.h>
 
 
 static char *hash_type = "sha256";
+int target_chunk_size = 512 * 1024;
+int min_chunk_size = 0;
+int max_chunk_size = 1024 * 1024 * 8;
+int window_size = (1024*4);
 
 
 /*
@@ -63,8 +68,6 @@ void print_chunk(char *data, int start, int end) {
  * of variation (blocks of 1-5 bytes are common)
  */
 void chunk_v1(char *data, int size) {
-	int WINDOW_SIZE = 4096;
-
 	int i = 0;
 	int sum = 0;
 	int offset = 0;
@@ -72,58 +75,10 @@ void chunk_v1(char *data, int size) {
 
 	for(i=0; i<size; i++) {
 		sum = sum + data[i];
-		if(i >= WINDOW_SIZE) {
-			sum = sum - data[i - WINDOW_SIZE];
+		if(i >= window_size) {
+			sum = sum - data[i - window_size];
 		}
-		if(
-			(
-				sum % WINDOW_SIZE == 0
-			) || (
-				i == size - 1
-			)
-		) {
-			print_chunk(data, offset, i);
-			offset = i;
-			n++;
-		}
-	}
-	//printf("%d bytes / %d chunks = %d bytes per chunk\n", size, n, size / n);
-}
-
-
-/*
- * A version of Rusty's algorithm with a larger window
- * and min / max block sizes; still more variable than
- * I'd like
- */
-void chunk_v2(char *data, int size) {
-	int WINDOW_SIZE = (1024*4);
-	int CHUNK_MIN = WINDOW_SIZE;
-	int CHUNK_MAX = 1024*1024;
-
-	int i = 0;
-	int sum = 0;
-	int offset = 0;
-	int n = 0;
-
-	for(i=0; i<size; i++) {
-		sum = sum + data[i];
-		if(i >= WINDOW_SIZE) {
-			sum = sum - data[i - WINDOW_SIZE];
-		}
-		if(
-			(
-				(
-					sum % WINDOW_SIZE == 0
-				) && (
-					i - offset >= CHUNK_MIN
-				)
-			) || (
-				i - offset >= CHUNK_MAX
-			) || (
-				i == size - 1
-			)
-		) {
+		if(((sum % window_size == 0) && (i - offset >= min_chunk_size)) || (i - offset >= max_chunk_size) || (i == size - 1)) {
 			print_chunk(data, offset, i);
 			offset = i;
 			n++;
@@ -142,7 +97,6 @@ void chunk_v2(char *data, int size) {
  */
 long a=1, b=0;
 long MOD_ADLER = 4294967291;
-int V3_BLOCK_SIZE = 4096;
 
 long adler64(char *data, int len) {
 	int i;
@@ -156,24 +110,23 @@ long adler64(char *data, int len) {
 
 long rolladler(char removed, char new) {
 	a = (a - removed + new) % MOD_ADLER;
-	b = (b - removed * V3_BLOCK_SIZE - 1 + a) % MOD_ADLER;
+	b = (b - removed * window_size - 1 + a) % MOD_ADLER;
 	return (b << 32) | a;
 }
 
-void chunk_v3(char *data, int size) {
-	int TARGET_CHUNK_SIZE = 1024 * 1024;
+void chunk_v2(char *data, int size) {
 	int n = 0;
 	int offset = 0;
 	int i;
-	long sum = adler64(data, V3_BLOCK_SIZE);
+	long sum = adler64(data, window_size);
 
-	for(i=V3_BLOCK_SIZE; i<size; i++) {
-		if((sum % TARGET_CHUNK_SIZE == 0) || (i == size - 1)) {
+	for(i=window_size; i<size; i++) {
+		if(((sum % target_chunk_size == 0) && (i - offset > min_chunk_size)) || (i == size - 1) || (i - offset > max_chunk_size)) {
 			print_chunk(data, offset, i);
 			offset = i;
 			n++;
 		}
-		sum = rolladler(data[i - V3_BLOCK_SIZE], data[i]);
+		sum = rolladler(data[i - window_size], data[i]);
 	}
 }
 
@@ -185,18 +138,26 @@ int main(int argc, char *argv[]) {
 	/*
 	 * Check args
 	 */
-	char *method = "1";
+	int method = 1;
+	char *filename = NULL;
+	int c;
 
-	if(argc == 1) {
-		printf("Usage: %s <filename> [hash alg]\n", argv[0]);
-		return 1;
+	while((c = getopt(argc, argv, "hm:a:")) != -1) {
+		switch(c) {
+			case 'h':
+				printf("Usage: %s [opts] [filename]\n", argv[0]);
+				printf("  -m METH    Select chunking method (1 or 2)\n");
+				printf("  -a ALGO    Select hashing algo (md5, sha256, etc)\n");
+				return 255;
+			case 'm':
+				method = atoi(optarg);
+				break;
+			case 'a':
+				hash_type = optarg;
+				break;
+		}
 	}
-	if(argc >= 3) {
-		hash_type = argv[2];
-	}
-	if(argc >= 4) {
-		method = argv[3];
-	}
+	filename = argv[optind];
 
 	/*
 	 * Get the file mmap'ed
@@ -205,7 +166,7 @@ int main(int argc, char *argv[]) {
 	struct stat fdstat;
 	char *memblock;
 
-	fd = open(argv[1], O_RDONLY);
+	fd = open(filename, O_RDONLY);
 	fstat(fd, &fdstat);
 
 	memblock = mmap(NULL, fdstat.st_size, PROT_WRITE, MAP_PRIVATE, fd, 0);
@@ -217,14 +178,16 @@ int main(int argc, char *argv[]) {
 	/*
 	 * Find the checksum
 	 */
-	if(strcmp(method, "1") == 0) {
-		chunk_v1(memblock, fdstat.st_size);
-	}
-	if(strcmp(method, "2") == 0) {
-		chunk_v2(memblock, fdstat.st_size);
-	}
-	if(strcmp(method, "3") == 0) {
-		chunk_v3(memblock, fdstat.st_size);
+	switch(method) {
+		case 1:
+			chunk_v1(memblock, fdstat.st_size);
+			break;
+		case 2:
+			chunk_v2(memblock, fdstat.st_size);
+			break;
+		default:
+			printf("Invalid chunking method\n");
+			return 3;
 	}
 	return 0;
 }
