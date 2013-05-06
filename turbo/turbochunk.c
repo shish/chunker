@@ -142,18 +142,30 @@ int main(int argc, char *argv[]) {
 	char *filename = NULL;
 	int c;
 
-	while((c = getopt(argc, argv, "hm:a:")) != -1) {
+	while((c = getopt(argc, argv, "hm:a:t:n:x:")) != -1) {
 		switch(c) {
 			case 'h':
 				printf("Usage: %s [opts] [filename]\n", argv[0]);
 				printf("  -m METH    Select chunking method (1 or 2)\n");
 				printf("  -a ALGO    Select hashing algo (md5, sha256, etc)\n");
+				printf("  -t TARGET  Target chunk size (default %dKB)\n", target_chunk_size/1024);
+				printf("  -n MIN     Min chunk size (default %dKB)\n", min_chunk_size/1024);
+				printf("  -x MAX     Max chunk size (default %dKB)\n", max_chunk_size/1024);
 				return 255;
 			case 'm':
 				method = atoi(optarg);
 				break;
 			case 'a':
 				hash_type = optarg;
+				break;
+			case 't':
+				target_chunk_size = atoi(optarg);
+				break;
+			case 'n':
+				min_chunk_size = atoi(optarg);
+				break;
+			case 'x':
+				max_chunk_size = atoi(optarg);
 				break;
 		}
 	}
