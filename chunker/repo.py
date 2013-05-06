@@ -11,7 +11,6 @@ from chunker.util import log, get_config_path, heal, ts_round
 
 
 HASH_TYPE = "md5"
-HASH = hashlib.md5
 
 
 def get_chunks(fullpath, parent=None):
@@ -51,11 +50,11 @@ def get_chunks_v2(fullpath, parent=None):
         if border_reached or (i == len(mm) - 1):
             data = mm[offset:i]
             if parent:
-                chunks.append(Chunk(parent, offset, len(data), HASH_TYPE, HASH(data).hexdigest(), True))
+                chunks.append(Chunk(parent, offset, len(data), HASH_TYPE, hashlib.new(HASH_TYPE, data).hexdigest(), True))
             else:
                 chunks.append({
                     "hash_type": HASH_TYPE,
-                    "hash": HASH(data).hexdigest(),
+                    "hash": hashlib.new(HASH_TYPE, data).hexdigest(),
                     "offset": offset,
                     "length": len(data),
                     "saved": True,
@@ -77,11 +76,11 @@ def get_chunks_v1(fullpath, parent=None):
         if len(data) < bite_size:
             eof = True
         if parent:
-            chunks.append(Chunk(parent, offset, len(data), HASH_TYPE, HASH(data).hexdigest(), True))
+            chunks.append(Chunk(parent, offset, len(data), HASH_TYPE, hashlib.new(HASH_TYPE, data).hexdigest(), True))
         else:
             chunks.append({
                 "hash_type": HASH_TYPE,
-                "hash": HASH(data).hexdigest(),
+                "hash": hashlib.new(HASH_TYPE, data).hexdigest(),
                 "offset": offset,
                 "length": len(data),
                 "saved": True,
@@ -117,7 +116,7 @@ class Chunk(object):
         return "%s:%s:%s" % (self.hash_type, self.length, self.hash)
 
     def validate(self):
-        self.saved = HASH(self.get_data()).hexdigest() == self.hash
+        self.saved = hashlib.new(HASH_TYPE, self.get_data()).hexdigest() == self.hash
 
     def get_data(self):
         #self.log("Reading chunk")
@@ -329,7 +328,7 @@ class Repo(object):
         return "Repo(%r, %r, %r)" % (self.filename, self.root, self.name)
 
     def save_state(self):
-        self.save(get_config_path(HASH(self.name).hexdigest()+".state"), True)
+        self.save(get_config_path(hashlib.new(HASH_TYPE, self.name).hexdigest()+".state"), True)
 
     def save(self, filename=None, state=False):
         if not filename:
