@@ -1,6 +1,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdint.h>
+#include <string.h>
 #include <sys/mman.h>
 #include <sys/types.h>
 #include <sys/stat.h>
@@ -19,7 +20,8 @@ char *hash2str(char *data, int data_len) {
 	EVP_MD_CTX *mdctx;
 	const EVP_MD *md;
 	unsigned char md_value[EVP_MAX_MD_SIZE];
-	int md_len, i, n;
+	unsigned int md_len;
+	int n;
 
 	OpenSSL_add_all_digests();
 
