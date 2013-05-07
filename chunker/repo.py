@@ -2,6 +2,7 @@ import os
 import hashlib
 import sys
 import json
+import gzip
 from mmap import mmap
 from glob import glob
 from datetime import datetime
@@ -278,7 +279,11 @@ class Repo(object):
         """
         self.filename = filename
         if os.path.exists(self.filename):
-            struct = json.loads(file(self.filename).read())
+            try:
+                data = gzip.open(self.filename).read()
+            except:
+                data = open(self.filename).read()
+            struct = json.loads(data)
         else:
             struct = {}
 
@@ -330,9 +335,9 @@ class Repo(object):
         """
         # hardcode sha256 here as we don't want people's state files to move around each time
         # the chunking method is updated
-        self.save(get_config_path(hashlib.new("sha256", self.name).hexdigest()+".state"), state=True)
+        self.save(get_config_path(hashlib.new("sha256", self.name).hexdigest()+".state"), state=True, compress=True)
 
-    def save(self, filename=None, state=False):
+    def save(self, filename=None, state=False, compress=False):
         """
         Export the repository state (ie, write Repo.to_struct() to a JSON file)
 
@@ -344,11 +349,24 @@ class Repo(object):
             True -> useful for an app to exit and re-open on the same PC later
             False -> useful for exporting the minimal amount of info to get a
                      new node to join the swarm
+
+        compress:
+          whether or not to run the data through gzip (disabling this can make
+          debugging easier)
         """
         if not filename:
             filename = self.filename
-        fp = file(filename, "w")
-        fp.write(json.dumps(self.to_struct(state=state), indent=4))
+
+        struct = self.to_struct(state=state)
+
+        if compress:
+            fp = gzip.open(filename, "w")
+            data = json.dumps(struct)
+        else:
+            fp = open(filename, "w")
+            data = json.dumps(struct, indent=4)
+
+        fp.write(data)
         fp.close()
 
     def start(self):
@@ -461,26 +479,30 @@ if __name__ == "__main__":
             "type": "static",
             "files": {
                 "hello1.txt": {
-                    "chunks": [
-                        {
-                            "hash_type": "md5",
-                            "hash": "5a8dd3ad0756a93ded72b823b19dd877",
-                            "length": 6,
-                        }
-                    ],
-                    "timestamp": 0,
-                    "deleted": False,
+                    "versions": [{
+                        "chunks": [
+                            {
+                                "hash_type": "md5",
+                                "hash": "5a8dd3ad0756a93ded72b823b19dd877",
+                                "length": 6,
+                            }
+                        ],
+                        "timestamp": 0,
+                        "deleted": False,
+                        }],
                 },
                 "hello2.txt": {
-                    "chunks": [
-                        {
-                            "hash_type": "md5",
-                            "hash": "5a8dd3ad0756a93ded72b823b19dd877",
-                            "length": 6,
-                        }
-                    ],
-                    "timestamp": 0,
-                    "deleted": False,
+                    "versions": [{
+                        "chunks": [
+                            {
+                                "hash_type": "md5",
+                                "hash": "5a8dd3ad0756a93ded72b823b19dd877",
+                                "length": 6,
+                            }
+                        ],
+                        "timestamp": 0,
+                        "deleted": False,
+                        }],
                 }
             }
         }
