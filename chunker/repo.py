@@ -261,6 +261,21 @@ class File(object):
 
 class Repo(object):
     def __init__(self, filename, root=None, name=None):
+        """
+        Load a repository metadata structure
+
+        filename:
+          the name of a .chunker file to load, containing
+          either full state, or a useful subset
+
+        root:
+          where the repository should live on disk
+          (if not included in the state file)
+
+        name:
+          a unique (to this chunker process) name for this
+          repository (if not included in the state file)
+        """
         self.filename = filename
         if os.path.exists(self.filename):
             struct = json.loads(file(self.filename).read())
@@ -285,6 +300,9 @@ class Repo(object):
             self.add_local_files()
 
     def to_struct(self, state=False):
+        """
+        Serialise the repository into a JSON-compatible dictionary
+        """
         data = {
             "name": self.name,
             "type": self.type,
@@ -306,12 +324,32 @@ class Repo(object):
         return "Repo(%r, %r, %r)" % (self.filename, self.root, self.name)
 
     def save_state(self):
-        self.save(get_config_path(hashlib.new(HASH_TYPE, self.name).hexdigest()+".state"), True)
+        """
+        Save the repository state to the default state location
+        (eg ~/.config/chunker/<hash of repo name>.state on unix)
+        """
+        # hardcode sha256 here as we don't want people's state files to move around each time
+        # the chunking method is updated
+        self.save(get_config_path(hashlib.new("sha256", self.name).hexdigest()+".state"), state=True)
 
     def save(self, filename=None, state=False):
+        """
+        Export the repository state (ie, write Repo.to_struct() to a JSON file)
+
+        filename:
+          where to save the state to
+
+        state:
+          whether to save active state, eg which chunks are currently downloaded
+            True -> useful for an app to exit and re-open on the same PC later
+            False -> useful for exporting the minimal amount of info to get a
+                     new node to join the swarm
+        """
         if not filename:
             filename = self.filename
-        file(filename, "w").write(json.dumps(self.to_struct(state=state), indent=4))
+        fp = file(filename, "w")
+        fp.write(json.dumps(self.to_struct(state=state), indent=4))
+        fp.close()
 
     def start(self):
         dispatcher.connect(self.chunk_found, signal="chunk:found", sender=dispatcher.Any)
@@ -319,46 +357,42 @@ class Repo(object):
         dispatcher.connect(self.update, signal="file:update", sender=self.name)
 
         if self.type == "share":
-            self.add_local_files()
+            self.__add_local_files()
 
         self.self_heal()
 
-    def add_local_files(self):
-        base = os.path.abspath(self.root)
-        for filename in glob(self.root+"/*"):
-            path = os.path.abspath(filename)
-            relpath = path[len(base)+1:]
-            if (
-                relpath not in self.files or  # file on disk that we haven't seen before
-                ts_round(os.stat(path).st_mtime) > self.files[relpath].timestamp  # update for a file we know about
-            ):
-                dispatcher.send(signal="file:update", sender=self.name, filename=relpath, filedata={
-                    "versions": [{
-                        "deleted": False,
-                        "timestamp": ts_round(os.stat(path).st_mtime),
-                        "chunks": None,
-                    }]
-                })
-
     def get_missing_chunks(self):
+        """
+        Get a list of missing chunks
+        """
         l = []
         for file in self.files.values():
             l.extend(file.get_missing_chunks())
         return l
 
     def get_known_chunks(self):
+        """
+        Get a list of known chunks
+        """
         l = []
         for file in self.files.values():
             l.extend(file.get_known_chunks())
         return l
 
-    def chunk_found(self, chunk_id, data):
+    def add_chunk(self, chunk_id, data):
+        """
+        Notify the repository that a new chunk is available
+        (probably freshly downloaded from the network)
+        """
         self.log("Trying to insert chunk %s into files" % chunk_id)
         for chunk in self.missing_chunks:
             if chunk.id == chunk_id:
                 chunk.save_data(data)
 
     def self_heal(self, known_chunks=None, missing_chunks=None):
+        """
+        Try to use known chunks to fill in gaps
+        """
         # this could be much more efficient -
         # sort the lists, then go through each list once linearly
         if known_chunks is None:
@@ -371,7 +405,26 @@ class Repo(object):
     def log(self, msg):
         log("[%10.10s] %s" % (self.name, msg))
 
+    def __add_local_files(self):
+        base = os.path.abspath(self.root)
+        for filename in glob(self.root+"/*"):
+            path = os.path.abspath(filename)
+            relpath = path[len(base)+1:]
+            if (
+                relpath not in self.files or  # file on disk that we haven't seen before
+                ts_round(os.stat(path).st_mtime) > self.files[relpath].timestamp  # update for a file we know about
+            ):
+                self.update(relpath, {
+                    "versions": [{
+                        "timestamp": ts_round(os.stat(path).st_mtime),
+                        "chunks": None,
+                    }]
+                })
+
     def update(self, filename, filedata):
+        """
+        Update the repository with new metadata for a named file
+        """
         file = File.from_struct(self, filename, filedata)
 
         if file.filename not in self.files:
