@@ -95,7 +95,7 @@ class Chunk(object):
         return "%s:%s:%s" % (self.hash_type, self.length, self.hash)
 
     def validate(self):
-        self.saved = hashlib.new(HASH_TYPE, self.get_data()).hexdigest() == self.hash
+        self.saved = hashlib.new(self.hash_type, self.get_data()).hexdigest() == self.hash
 
     def get_data(self):
         #self.log("Reading chunk")
