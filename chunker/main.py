@@ -8,14 +8,24 @@ from glob import glob
 
 from chunker.repo import Repo
 from chunker.util import get_config_path, heal, log
+from chunker.net import MetaNet
 
 
-def cmd_chunk(args):
+config_file_path = get_config_path("main.conf")
+
+
+def cmd_chunk(args, config):
     r = Repo(args.output, args.input, args.name or os.path.basename(args.input))
     r.save(args.output, state=False)
+    return {"status": "ok"}
 
 
-def cmd_add(args):
+def cmd_save(args, config):
+    file(config_file_path, "w").write(json.dumps(config))
+    return {"status": "ok"}
+
+
+def cmd_add(args, config):
     r = Repo(
         args.filename,
         args.directory,
@@ -24,7 +34,7 @@ def cmd_add(args):
     r.save_state()
 
 
-def cmd_heal(args):
+def cmd_heal(args, config):
     known = []
     missing = []
     for filename in glob(get_config_path("*.state")):
@@ -35,14 +45,27 @@ def cmd_heal(args):
     return {"status": "ok", "saved": saved}
 
 
-def cmd_fetch(args):
+def cmd_fetch(args, config):
     repos = []
+    all_known_chunks = []
+    all_missing_chunks = []
     for filename in glob(get_config_path("*.state")):
-        repos.append(Repo(filename))
+        repo = Repo(filename)
+        repos.append(repo)
+        all_known_chunks.extend(repo.get_known_chunks())
+        all_missing_chunks.extend(repo.get_missing_chunks())
     log("Repos: %s" % ", ".join(["%r" % repo for repo in repos]))
 
+    mn = MetaNet(config)
 
-def cmd_stat(args):
+    for chunk in all_known_chunks:
+        mn.offer(chunk)
+
+    for chunk in all_missing_chunks:
+        mn.request(chunk)
+
+
+def cmd_stat(args, config):
     r = Repo(args.filename, args.directory, os.path.basename(args.filename))
     chunks = r.get_known_chunks()
     seen = {}
@@ -62,22 +85,29 @@ def cmd_stat(args):
 
 
 def main():
+    try:
+        config = json.loads(open(config_file_path).read())
+    except Exception as e:
+        log("Error loading default config: %s" % str(e))
+        config = {}
     args = sys.argv[1:]
     if args:
-        do(args)
+        do(args, config)
     else:
         while True:
             cmd = raw_input("chunker> ")
             try:
-                print do(cmd.split())
+                print do(cmd.split(), config)
             except Exception as e:
                 print {"status": "error", "message": str(e)}
+
 
 class NonExitingArgumentParser(argparse.ArgumentParser):
     def exit(self, status=0, message=None):
         raise Exception(message)
 
-def do(argv):
+
+def do(argv, config):
     parser = NonExitingArgumentParser(description="a thing")
     subparsers = parser.add_subparsers()
 
@@ -107,7 +137,8 @@ def do(argv):
     p_stat.set_defaults(func=cmd_stat)
 
     args = parser.parse_args(argv)
-    return args.func(args)
+    return args.func(args, config)
+
 
 if __name__ == "__main__":
     sys.exit(main())

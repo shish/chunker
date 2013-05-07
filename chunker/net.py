@@ -1,54 +1,25 @@
 from datetime import datetime
 from chunker.util import log
+from pydht import DHT
 
 
-class Peer(object):
-    def __init__(self, (host, port)):
-        self.host = host
-        self.port = int(port)
+class MetaNet(object):
+    def __init__(self, config):
+        self.dht = DHT("0.0.0.0", 52525)
+        self.public_contact = ("127.0.0.1", 52525)
+        for peer in config.get("peers", []):
+            self.dht.boot_peer(peer["host"], peer["port"])
 
-    def __repr__(self):
-        return "Peer((%r, %r))" % (self.host, self.port)
+    def _log(self, msg):
+        log("[MetaNet] %s" % msg)
 
-    def get_files(self):
-        self.log("Asking for any new files")
-        return []
+    def offer(self, chunk):
+        self._log("Offering %s" % chunk.id)
 
-    def log(self, msg):
-        log("[%s:%d] %s" % (self.host, self.port, msg))
+        if chunk.id not in self.dht:
+            self.dht[chunk.id] = [self.public_contact]
+        else:
+            self.dht[chunk.id] = self.dht[chunk.id] + [self.public_contact]
 
-
-class Seed(object):
-    http_blah = "s"
-
-    def __init__(self):
-        self.main = None
-
-    def start(self):
-        print "Seeding:"
-        pass
-
-    def stop(self):
-        pass
-
-
-class NetManager(object):
-    def __init__(self):
-        self.peers = []
-        self.seed = Seed()
-        for addr in self.peers:
-            host, _, port = addr.partition(":")
-            self.peers.append(Peer((host, port)))
-
-    def start(self):
-        self.seed.start()
-        print "Looking for missing chunks"
-        print self.share.repo.missing_chunks
-
-        print "Looking for new files"
-        for peer in self.peers:
-            print peer.get_files()
-
-    def stop(self):
-        self.seed.stop()
-
+    def request(self, chunk):
+        self._log("Requesting %s" % chunk.id)
