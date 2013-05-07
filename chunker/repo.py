@@ -302,7 +302,7 @@ class Repo(object):
         # we can add files, then add our local files to the chunkfile
         if (self.type == "static" and not struct) or (self.type == "share"):
             dispatcher.connect(self.update, signal="file:update", sender=self.name)
-            self.add_local_files()
+            self.__add_local_files()
 
     def to_struct(self, state=False):
         """
