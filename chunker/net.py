@@ -1,6 +1,7 @@
 from datetime import datetime
 from chunker.util import log
 from pydht import DHT
+import stun
 
 
 _default_peers = [
@@ -13,9 +14,13 @@ _default_peers = [
 
 class MetaNet(object):
     def __init__(self, config):
+        self._log("Getting external IP info")
+        nat_type, external_ip, external_port = stun.get_ip_info()
+        self._log("Public addr: %s:%s" % (external_ip, external_port))
+
         self._log("Connecting to DHT")
         self.dht = DHT("0.0.0.0", 52525)
-        self.public_contact = ("127.0.0.1", 52525)
+        self.public_contact = (external_ip, external_port)
         for peer in config.get("peers", _default_peers):
             self.dht.bootstrap(peer["host"], peer["port"])
 

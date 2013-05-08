@@ -10,6 +10,8 @@ requires = [
     #'flexihash',
     #'pystun',
     'PyDispatcher',
+    'pydht',
+    'pystun',
 
     # testing
     'nose',
