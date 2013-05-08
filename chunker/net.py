@@ -3,11 +3,20 @@ from chunker.util import log
 from pydht import DHT
 
 
+_default_peers = [
+    {
+        "host": "violet.shishnet.org",
+        "port": 52525
+    }
+]
+
+
 class MetaNet(object):
     def __init__(self, config):
+        self._log("Connecting to DHT")
         self.dht = DHT("0.0.0.0", 52525)
         self.public_contact = ("127.0.0.1", 52525)
-        for peer in config.get("peers", []):
+        for peer in config.get("peers", _default_peers):
             self.dht.bootstrap(peer["host"], peer["port"])
 
     def _log(self, msg):
