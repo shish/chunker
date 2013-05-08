@@ -3,6 +3,7 @@ import hashlib
 import sys
 import json
 import gzip
+import uuid
 from mmap import mmap
 from glob import glob
 from datetime import datetime
@@ -292,8 +293,9 @@ class Repo(object):
 
         self.name = name or struct.get("name") or os.path.basename(filename)
         self.type = struct.get("type", "static")  # static / share
-        self.secret = struct.get("secret", None)  # only for share
-        self.peers = struct.get("peers", [])      # only for share?
+        self.uuid = struct.get("uuid", hashlib.new("sha256", str(uuid.uuid4()).hexdigest())
+        self.key = struct.get("key", None)        # for encrypting / decrypting chunks
+        self.peers = struct.get("peers", [])
         self.root = root or struct.get("root")
         self.files = dict([
             (filename, File.from_struct(self, filename, data))
@@ -334,11 +336,11 @@ class Repo(object):
     def save_state(self):
         """
         Save the repository state to the default state location
-        (eg ~/.config/chunker/<hash of repo name>.state on unix)
+        (eg ~/.config/chunker/<uuid>.state on unix)
         """
         # hardcode sha256 here as we don't want people's state files to move around each time
         # the chunking method is updated
-        self.save(get_config_path(hashlib.new("sha256", self.name).hexdigest()+".state"), state=True, compress=True)
+        self.save(get_config_path(self.uuid+".state"), state=True, compress=True)
 
     def save(self, filename=None, state=False, compress=False):
         """
