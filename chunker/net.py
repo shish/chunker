@@ -8,7 +8,7 @@ class MetaNet(object):
         self.dht = DHT("0.0.0.0", 52525)
         self.public_contact = ("127.0.0.1", 52525)
         for peer in config.get("peers", []):
-            self.dht.boot_peer(peer["host"], peer["port"])
+            self.dht.bootstrap(peer["host"], peer["port"])
 
     def _log(self, msg):
         log("[MetaNet] %s" % msg)
