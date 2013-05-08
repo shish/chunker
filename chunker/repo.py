@@ -13,7 +13,7 @@ from pydispatch import dispatcher
 #if sys.version_info < (3, 4):
 #   import sha3
 
-from chunker.util import log, get_config_path, heal, ts_round
+from chunker.util import log, get_config_path, heal, ts_round, sha256
 
 
 HASH_TYPE = "sha256"
@@ -293,7 +293,7 @@ class Repo(object):
 
         self.name = name or struct.get("name") or os.path.basename(filename)
         self.type = struct.get("type", "static")  # static / share
-        self.uuid = struct.get("uuid", hashlib.new("sha256", str(uuid.uuid4()).hexdigest())
+        self.uuid = struct.get("uuid", sha256(uuid.uuid4()))
         self.key = struct.get("key", None)        # for encrypting / decrypting chunks
         self.peers = struct.get("peers", [])
         self.root = root or struct.get("root")
@@ -306,7 +306,6 @@ class Repo(object):
         # if we're creating a static chunkfile, or connecting to a share where
         # we can add files, then add our local files to the chunkfile
         if (self.type == "static" and not struct) or (self.type == "share"):
-            dispatcher.connect(self.update, signal="file:update", sender=self.name)
             self.__add_local_files()
 
     def to_struct(self, state=False):
@@ -338,8 +337,6 @@ class Repo(object):
         Save the repository state to the default state location
         (eg ~/.config/chunker/<uuid>.state on unix)
         """
-        # hardcode sha256 here as we don't want people's state files to move around each time
-        # the chunking method is updated
         self.save(get_config_path(self.uuid+".state"), state=True, compress=True)
 
     def save(self, filename=None, state=False, compress=False):

@@ -2,6 +2,7 @@ from datetime import datetime
 import os
 import math
 import sys
+import hashlib
 
 
 config_dir = os.path.expanduser("~/.config/chunker")
@@ -10,6 +11,10 @@ config_dir = os.path.expanduser("~/.config/chunker")
 def _mkconfigdir():
     if not os.path.exists(config_dir):
         os.makedirs(config_dir)
+
+
+def sha256(data):
+    return hashlib.sha256(str(data)).hexdigest()
 
 
 def get_config_path(filename):

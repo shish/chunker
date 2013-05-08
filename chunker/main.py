@@ -67,6 +67,8 @@ def cmd_fetch(args, config):
     for chunk in set(all_missing_chunks):
         mn.request(chunk)
 
+    import pdb; pdb.set_trace()
+
 
 def cmd_stat(args, config):
     r = Repo(args.filename, args.directory, os.path.basename(args.filename))
