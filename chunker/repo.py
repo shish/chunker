@@ -94,6 +94,9 @@ class Chunk(object):
     def id(self):
         return "%s:%s:%s" % (self.hash_type, self.length, self.hash)
 
+    def __cmp__(self, other):
+        return cmp(self.id, other.id)
+
     def validate(self):
         self.saved = hashlib.new(self.hash_type, self.get_data()).hexdigest() == self.hash
 

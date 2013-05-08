@@ -54,16 +54,17 @@ def cmd_fetch(args, config):
         repos.append(repo)
         all_known_chunks.extend(repo.get_known_chunks())
         all_missing_chunks.extend(repo.get_missing_chunks())
+
     log("Repos:")
     for repo in repos:
         log(repo)
 
     mn = MetaNet(config)
 
-    for chunk in all_known_chunks:
+    for chunk in set(all_known_chunks):
         mn.offer(chunk)
 
-    for chunk in all_missing_chunks:
+    for chunk in set(all_missing_chunks):
         mn.request(chunk)
 
 
