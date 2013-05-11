@@ -5,21 +5,16 @@ import sys
 import hashlib
 
 
-config_dir = os.path.expanduser("~/.config/chunker")
-
-
-def _mkconfigdir():
-    if not os.path.exists(config_dir):
-        os.makedirs(config_dir)
-
-
 def sha256(data):
     return hashlib.sha256(str(data)).hexdigest()
 
 
 def get_config_path(filename):
-    _mkconfigdir()
-    return os.path.join(os.path.expanduser("~/.config/chunker/"), filename)
+    filepath = os.path.join(os.path.expanduser("~/.config/chunker/"), filename)
+    dirpath = os.path.dirname(filepath)
+    if not os.path.exists(dirpath):
+        os.makedirs(dirpath)
+    return filepath
 
 
 def log(msg):

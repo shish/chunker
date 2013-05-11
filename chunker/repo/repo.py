@@ -1,0 +1,299 @@
+from pyinotify import WatchManager, ThreadedNotifier, ProcessEvent, ALL_EVENTS
+from Crypto.Cipher import AES
+from glob import glob
+from chunker.util import log, get_config_path, heal, ts_round, sha256
+import json
+import gzip
+from datetime import datetime
+import os
+import uuid
+
+from .file import File
+
+
+class Repo(ProcessEvent):
+    def __init__(self, filename, root=None, name=None):
+        """
+        Load a repository metadata structure
+
+        filename:
+          the name of a .chunker file to load, containing
+          either full state, or a useful subset
+
+        root:
+          where the repository should live on disk
+          (if not included in the state file)
+
+        name:
+          a unique (to this chunker process) name for this
+          repository (if not included in the state file)
+        """
+        self.filename = filename
+        if os.path.exists(self.filename):
+            try:
+                data = gzip.open(self.filename).read()
+            except:
+                data = open(self.filename).read()
+            struct = json.loads(data)
+        else:
+            struct = {}
+
+        self.name = name or struct.get("name") or os.path.basename(filename)
+        self.type = struct.get("type", "static")  # static / share
+        self.uuid = struct.get("uuid", sha256(uuid.uuid4()))
+        self.key = struct.get("key", None)        # for encrypting / decrypting chunks
+        self.peers = struct.get("peers", [])
+        self.root = root or struct.get("root")
+        self.files = dict([
+            (filename, File.from_struct(self, filename, data))
+            for filename, data
+            in struct.get("files", {}).items()
+        ])
+
+        # if we're creating a static chunkfile, or connecting to a share where
+        # we can add files, then add our local files to the chunkfile
+        if (self.type == "static" and not struct) or (self.type == "share"):
+            self.__add_local_files()
+
+        if self.type == "share":
+            watcher = WatchManager()
+            watcher.add_watch(self.root, ALL_EVENTS, rec=True, auto_add=True)
+            self.notifier = ThreadedNotifier(watcher, self)
+            self.notifier.daemon = True
+        else:
+            self.notifier = None
+
+    def to_struct(self, state=False):
+        """
+        Serialise the repository into a JSON-compatible dictionary
+        """
+        data = {
+            "name": self.name,
+            "type": self.type,
+            "uuid": self.uuid,
+            "peers": self.peers,
+            "files": dict([
+                (filename, file.to_struct(state=state))
+                for filename, file
+                in self.files.items()
+            ])
+        }
+        if state:
+            data.update({
+                "key": self.key,
+                "root": self.root,
+            })
+        return data
+
+    def __repr__(self):
+        return "Repo(%r, %r, %r)" % (self.filename, self.root, self.name)
+
+    def save_state(self):
+        """
+        Save the repository state to the default state location
+        (eg ~/.config/chunker/<uuid>.state on unix)
+        """
+        self.save(get_config_path(self.uuid+".state"), state=True, compress=True)
+
+    def save(self, filename=None, state=False, compress=False):
+        """
+        Export the repository state (ie, write Repo.to_struct() to a JSON file)
+
+        filename:
+          where to save the state to
+
+        state:
+          whether to save active state, eg which chunks are currently downloaded
+            True -> useful for an app to exit and re-open on the same PC later
+            False -> useful for exporting the minimal amount of info to get a
+                     new node to join the swarm
+
+        compress:
+          whether or not to run the data through gzip (disabling this can make
+          debugging easier)
+        """
+        if not filename:
+            filename = self.filename
+
+        struct = self.to_struct(state=state)
+
+        if compress:
+            fp = gzip.open(filename, "w")
+            data = json.dumps(struct)
+        else:
+            fp = open(filename, "w")
+            data = json.dumps(struct, indent=4)
+
+        fp.write(data)
+        fp.close()
+
+    def log(self, msg):
+        log("[%10.10s] %s" % (self.name, msg))
+
+    ###################################################################
+    # Metadata
+    ###################################################################
+
+    def __add_local_files(self):
+        base = os.path.abspath(self.root)
+        for filename in glob(self.root+"/*"):
+            path = os.path.abspath(filename)
+            relpath = path[len(base)+1:]
+            if (
+                relpath not in self.files or  # file on disk that we haven't seen before
+                ts_round(os.stat(path).st_mtime) > self.files[relpath].timestamp  # update for a file we know about
+            ):
+                self.update(relpath, {
+                    "versions": [{
+                        "timestamp": ts_round(os.stat(path).st_mtime),
+                        "chunks": None,
+                    }]
+                })
+
+    def update(self, filename, filedata):
+        """
+        Update the repository with new metadata for a named file
+        """
+        file = File.from_struct(self, filename, filedata)
+
+        if file.filename not in self.files:
+            self.files[file.filename] = file
+        else:
+            self.files[file.filename].versions.extend(file.versions)
+
+        self.files[file.filename].versions.sort()
+
+        if file.deleted:
+            file.log("deleted")
+            if os.path.exists(file.fullpath):
+                os.unlink(file.fullpath)
+        else:
+            if os.path.exists(file.fullpath):
+                file.log("updated")
+            else:
+                with open(file.fullpath, "a"):
+                    if file.is_complete():
+                        # mark as finished already
+                        os.utime(file.fullpath, (file.timestamp, file.timestamp))
+                    else:
+                        # mark as incomplete
+                        os.utime(file.fullpath, (0, 0))
+                file.log("created")
+
+        self.save_state()
+
+    ###################################################################
+    # Chunks
+    ###################################################################
+
+    def get_missing_chunks(self):
+        """
+        Get a list of missing chunks
+        """
+        l = []
+        for file in self.files.values():
+            l.extend(file.get_missing_chunks())
+        return l
+
+    def get_known_chunks(self):
+        """
+        Get a list of known chunks
+        """
+        l = []
+        for file in self.files.values():
+            l.extend(file.get_known_chunks())
+        return l
+
+    def add_chunk(self, chunk_id, data):
+        """
+        Notify the repository that a new chunk is available
+        (probably freshly downloaded from the network)
+        """
+        self.log("Trying to insert chunk %s into files" % chunk_id)
+        for chunk in self.missing_chunks:
+            if chunk.id == chunk_id:
+                chunk.save_data(data)
+
+    def self_heal(self, known_chunks=None, missing_chunks=None):
+        """
+        Try to use known chunks to fill in gaps
+        """
+        if known_chunks is None:
+            known_chunks = self.get_known_chunks()
+        if missing_chunks is None:
+            missing_chunks = self.get_missing_chunks()
+
+        heal(known_chunks, missing_chunks)
+
+    ###################################################################
+    # Crypto
+    ###################################################################
+
+    def encrypt(self, data):
+        if self.key:
+            c = AES.new(self.key)
+            data = c.encrypt(data)
+        return data
+
+    def decrypt(self, data):
+        if self.key:
+            c = AES.new(self.key)
+            data = c.decrypt(data)
+        return data
+
+    ###################################################################
+    # File system monitoring
+    ###################################################################
+
+    def start(self):
+        """
+        Start monitoring for file changes
+        """
+        if self.type == "share":
+            self.log("Watching %s for file changes" % self.root)
+            self.notifier.start()
+            self.__add_local_files()
+
+        self.self_heal()
+
+    def stop(self):
+        """
+        Stop monitoring for file changes
+        """
+        if self.notifier:
+            self.log("No longer watching %s for file changes" % self.root)
+            self.notifier.stop()
+
+    def __relpath(self, path):
+        base = os.path.abspath(self.root)
+        path = os.path.abspath(path)
+        return path[len(base)+1:]
+
+    def process_IN_CREATE(self, event):
+        if os.path.isdir(event.pathname):
+            return
+        path = self.__relpath(event.pathname)
+        self.update(path, filedata={
+            "timestamp": int(os.stat(event.pathname).st_mtime),
+            "chunks": None,
+        })
+
+#    def process_IN_MODIFY(self, event):
+#        if os.path.isdir(event.pathname):
+#            return
+#        path = self.__relpath(event.pathname)
+#        self.update(path, filedata={
+#            "deleted": False,
+#            "timestamp": int(os.stat(event.pathname).st_mtime),
+#            "chunks": None,
+#        })
+
+    def process_IN_DELETE(self, event):
+        if os.path.isdir(event.pathname):
+            return
+        path = self.__relpath(event.pathname)
+        self.update(path, filedata={
+            "deleted": True,
+            "timestamp": int(time()),
+            "chunks": [],
+        })

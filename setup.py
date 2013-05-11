@@ -12,6 +12,7 @@ requires = [
     #'PyDispatcher',
     'pydht',
     'pystun',
+    'pycrypto',
 
     # testing
     'nose',
