@@ -9,7 +9,7 @@ CHANGES = "" # open(os.path.join(here, 'CHANGES.txt')).read()
 requires = [
     #'flexihash',
     #'pystun',
-    'PyDispatcher',
+    #'PyDispatcher',
     'pydht',
     'pystun',
 

@@ -8,7 +8,7 @@ from mmap import mmap
 from glob import glob
 from datetime import datetime
 from collections import deque
-from pydispatch import dispatcher
+from pyinotify import WatchManager, ThreadedNotifier, ProcessEvent, ALL_EVENTS
 
 #if sys.version_info < (3, 4):
 #   import sha3
@@ -131,12 +131,6 @@ class Chunk(object):
             # set file timestamp to new metadata timestamp
             self.file.log("File complete, updating timestamp")
             os.utime(self.file.fullpath, (atime, self.file.timestamp))
-            dispatcher.send(
-                signal="ui:alert",
-                sender=self.file.repo.name,
-                title="Download Complete",
-                message=self.file.filename
-            )
         else:
             # set file timestamp or old metadata timestamp
             os.utime(self.file.fullpath, (atime, mtime))
@@ -264,7 +258,7 @@ class File(object):
         return self.current_version().is_complete()
 
 
-class Repo(object):
+class Repo(object, ProcessEvent):
     def __init__(self, filename, root=None, name=None):
         """
         Load a repository metadata structure
@@ -307,6 +301,14 @@ class Repo(object):
         # we can add files, then add our local files to the chunkfile
         if (self.type == "static" and not struct) or (self.type == "share"):
             self.__add_local_files()
+
+        if self.type == "share":
+            watcher = WatchManager()
+            watcher.add_watch(self.root, ALL_EVENTS, rec=True, auto_add=True)
+            self.notifier = ThreadedNotifier(watcher, self)
+            self.notifier.daemon = True
+        else:
+            self.notifier = None
 
     def to_struct(self, state=False):
         """
@@ -370,16 +372,6 @@ class Repo(object):
 
         fp.write(data)
         fp.close()
-
-    def start(self):
-        dispatcher.connect(self.chunk_found, signal="chunk:found", sender=dispatcher.Any)
-        dispatcher.connect(self.self_heal, signal="cmd:heal", sender=self.name)
-        dispatcher.connect(self.update, signal="file:update", sender=self.name)
-
-        if self.type == "share":
-            self.__add_local_files()
-
-        self.self_heal()
 
     def get_missing_chunks(self):
         """
@@ -472,3 +464,61 @@ class Repo(object):
                 file.log("created")
 
         self.save_state()
+
+    ###################################################################
+    # File system monitoring
+    ###################################################################
+
+    def start(self):
+        """
+        Start monitoring for file changes
+        """
+        if self.type == "share":
+            self.log("Watching %s for file changes" % self.root)
+            self.notifier.start()
+            self.__add_local_files()
+
+        self.self_heal()
+
+    def stop(self):
+        """
+        Stop monitoring for file changes
+        """
+        if self.notifier:
+            self.log("No longer watching %s for file changes" % self.root)
+            self.notifier.stop()
+
+    def __relpath(self, path):
+        base = os.path.abspath(self.root)
+        path = os.path.abspath(path)
+        return path[len(base)+1:]
+
+    def process_IN_CREATE(self, event):
+        if os.path.isdir(event.pathname):
+            return
+        path = self.__relpath(event.pathname)
+        self.update(path, filedata={
+            "timestamp": int(os.stat(event.pathname).st_mtime),
+            "chunks": get_chunks(event.pathname),
+        })
+
+#    def process_IN_MODIFY(self, event):
+#        if os.path.isdir(event.pathname):
+#            return
+#        path = self.__relpath(event.pathname)
+#        self.update(path, filedata={
+#            "deleted": False,
+#            "timestamp": int(time()),
+#            "chunks": get_chunks(event.pathname),
+#        })
+
+    def process_IN_DELETE(self, event):
+        if os.path.isdir(event.pathname):
+            return
+        path = self.__relpath(event.pathname)
+        self.update(path, filedata={
+            "deleted": True,
+            "timestamp": int(time()),
+            "chunks": [],
+        })
+

@@ -22,7 +22,7 @@ class RepoTests(unittest2.TestCase):
                             ],
                             "timestamp": 0,
                             "deleted": False,
-                            }],
+                        }],
                     },
                     "hello2.txt": {
                         "versions": [{
