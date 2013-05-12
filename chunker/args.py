@@ -48,6 +48,4 @@ class WebArgumentParser(NonExitingArgumentParser):
                 args.append("--"+key)
                 args.append(value)
 
-
-        print args
         return argparse.ArgumentParser.parse_args(self, args)
