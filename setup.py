@@ -13,6 +13,7 @@ requires = [
     'pydht',
     'pystun',
     'pycrypto',
+    'web.py',
 
     # testing
     'nose',
@@ -39,6 +40,7 @@ setup(name='Chunker',
       install_requires=requires,
       entry_points="""\
       [console_scripts]
-      chunker = chunker.main:main
+      chunker = chunker.int_cli:main
+      chunker-web = chunker.int_web:main
       """,
       )

@@ -1,7 +1,7 @@
 from pyinotify import WatchManager, ThreadedNotifier, ProcessEvent, ALL_EVENTS
 from Crypto.Cipher import AES
 from glob import glob
-from chunker.util import log, get_config_path, heal, ts_round, sha256
+from chunker.util import log, get_config_path, heal, ts_round, sha256, config
 import json
 import gzip
 from datetime import datetime
@@ -13,7 +13,7 @@ from .file import File
 
 
 class Repo(ProcessEvent):
-    def __init__(self, filename, root=None, name=None):
+    def __init__(self, filename=None, config={}, **kwargs):
         """
         Load a repository metadata structure
 
@@ -21,30 +21,34 @@ class Repo(ProcessEvent):
           the name of a .chunker file to load, containing
           either full state, or a useful subset
 
-        root:
-          where the repository should live on disk
-          (if not included in the state file)
+        **kwargs:
+          a basic .chunker data structure
 
-        name:
-          a unique (to this chunker process) name for this
-          repository (if not included in the state file)
+        config:
+          optional dictionary of extra info. Keys:
+            username - for change log
+            hostname - for change log
         """
-        self.filename = filename
-        if os.path.exists(self.filename):
-            try:
-                data = gzip.open(self.filename).read()
-            except:
-                data = open(self.filename).read()
-            struct = json.loads(data)
-        else:
-            struct = {}
+        if not filename and not kwargs:
+            raise Exception("Repo has no initialisation data")
 
-        self.name = name or struct.get("name") or os.path.basename(filename)
+        struct = {}
+        if filename and os.path.exists(filename):
+            try:
+                data = gzip.open(filename).read()
+            except:
+                data = open(filename).read()
+            struct.update(json.loads(data))
+        struct.update(kwargs)
+
+        self.config = config
+
+        self.name = struct.get("name") or os.path.basename(struct.get("root")) or os.path.splitext(os.path.basename(filename or ""))[0]
+        self.root = struct.get("root") or os.path.join(os.path.expanduser("~/Downloads"), self.name)
         self.type = struct.get("type", "share")  # static / share
         self.uuid = struct.get("uuid", sha256(uuid.uuid4()))
-        self.key = struct.get("key", None)        # for encrypting / decrypting chunks
+        self.key = struct.get("key", None)       # for encrypting / decrypting chunks
         self.peers = struct.get("peers", [])
-        self.root = os.path.abspath(root or struct.get("root"))
         self.files = dict([
             (filename, File.from_struct(self, filename, data))
             for filename, data
@@ -53,7 +57,7 @@ class Repo(ProcessEvent):
 
         # if we're creating a new static chunkfile, then add our local files to the chunkfile
         # should this be in start()?
-        if (self.type == "static" and not struct):
+        if (self.type == "static" and not self.files):
             self.__add_local_files()
 
         if self.type == "share":
@@ -87,7 +91,7 @@ class Repo(ProcessEvent):
         return data
 
     def __repr__(self):
-        return "Repo(%r, %r, %r)" % (self.filename, self.root, self.name)
+        return "Repo(%r, %r, %r, %r)" % (self.type, self.uuid, self.root, self.name)
 
     def save_state(self):
         """
@@ -113,9 +117,6 @@ class Repo(ProcessEvent):
           whether or not to run the data through gzip (disabling this can make
           debugging easier)
         """
-        if not filename:
-            filename = self.filename
-
         struct = self.to_struct(state=state)
 
         if compress:
@@ -136,25 +137,27 @@ class Repo(ProcessEvent):
     ###################################################################
 
     def __add_local_files(self):
-        for filename in glob(self.root+"/*"):
-            relpath = self.__relpath(path)
-            # look for
-            # - files that we haven't seen before
-            # - files with newer timestamps than our latest known version
-            #
-            # note that if a file has new content, but the timestamp is
-            # unchanged since we last saw it, we won't add a new version,
-            # but rather treat the current version as corrupt
-            if (
-                relpath not in self.files or
-                ts_round(os.stat(path).st_mtime) > self.files[relpath].timestamp
-            ):
-                self.update(relpath, {
-                    "versions": [{
-                        "timestamp": ts_round(os.stat(path).st_mtime),
-                        "chunks": None,
-                    }]
-                })
+        for dirpath, dirnames, filenames in os.walk(self.root):
+            for filename in filenames:
+                path = os.path.join(dirpath, filename)
+                relpath = self.__relpath(path)
+                # look for
+                # - files that we haven't seen before
+                # - files with newer timestamps than our latest known version
+                #
+                # note that if a file has new content, but the timestamp is
+                # unchanged since we last saw it, we won't add a new version,
+                # but rather treat the current version as corrupt
+                if (
+                    relpath not in self.files or
+                    ts_round(os.stat(path).st_mtime) > self.files[relpath].timestamp
+                ):
+                    self.update(relpath, {
+                        "versions": [{
+                            "timestamp": ts_round(os.stat(path).st_mtime),
+                            "chunks": None,
+                        }]
+                    })
 
         for file in self.files.values():
             # "not supposed to be deleted, but it is" -> it has been
@@ -302,6 +305,8 @@ class Repo(ProcessEvent):
             "versions": [{
                 "timestamp": int(os.stat(event.pathname).st_mtime),
                 "chunks": None,
+                "username": self.config.get("username"),
+                "hostname": self.config.get("hostname"),
             }]
         })
 
@@ -314,6 +319,8 @@ class Repo(ProcessEvent):
 #                "deleted": False,
 #                "timestamp": int(os.stat(event.pathname).st_mtime),
 #                "chunks": None,
+#                "username": self.config.get("username"),
+#                "hostname": self.config.get("hostname"),
 #            }]
 #        })
 
@@ -326,5 +333,7 @@ class Repo(ProcessEvent):
                 "deleted": True,
                 "timestamp": int(time()),
                 "chunks": [],
+                "username": self.config.get("username"),
+                "hostname": self.config.get("hostname"),
             }]
         })

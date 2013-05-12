@@ -5,6 +5,9 @@ import sys
 import hashlib
 
 
+config = {}
+
+
 def sha256(data):
     return hashlib.sha256(str(data)).hexdigest()
 
