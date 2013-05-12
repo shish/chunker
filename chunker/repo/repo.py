@@ -7,6 +7,7 @@ import gzip
 from datetime import datetime
 import os
 import uuid
+from time import time
 
 from .file import File
 
@@ -39,20 +40,20 @@ class Repo(ProcessEvent):
             struct = {}
 
         self.name = name or struct.get("name") or os.path.basename(filename)
-        self.type = struct.get("type", "static")  # static / share
+        self.type = struct.get("type", "share")  # static / share
         self.uuid = struct.get("uuid", sha256(uuid.uuid4()))
         self.key = struct.get("key", None)        # for encrypting / decrypting chunks
         self.peers = struct.get("peers", [])
-        self.root = root or struct.get("root")
+        self.root = os.path.abspath(root or struct.get("root"))
         self.files = dict([
             (filename, File.from_struct(self, filename, data))
             for filename, data
             in struct.get("files", {}).items()
         ])
 
-        # if we're creating a static chunkfile, or connecting to a share where
-        # we can add files, then add our local files to the chunkfile
-        if (self.type == "static" and not struct) or (self.type == "share"):
+        # if we're creating a new static chunkfile, then add our local files to the chunkfile
+        # should this be in start()?
+        if (self.type == "static" and not struct):
             self.__add_local_files()
 
         if self.type == "share":
@@ -128,25 +129,46 @@ class Repo(ProcessEvent):
         fp.close()
 
     def log(self, msg):
-        log("[%10.10s] %s" % (self.name, msg))
+        log("[%s] %s" % (self.name, msg))
 
     ###################################################################
     # Metadata
     ###################################################################
 
     def __add_local_files(self):
-        base = os.path.abspath(self.root)
         for filename in glob(self.root+"/*"):
-            path = os.path.abspath(filename)
-            relpath = path[len(base)+1:]
+            relpath = self.__relpath(path)
+            # look for
+            # - files that we haven't seen before
+            # - files with newer timestamps than our latest known version
+            #
+            # note that if a file has new content, but the timestamp is
+            # unchanged since we last saw it, we won't add a new version,
+            # but rather treat the current version as corrupt
             if (
-                relpath not in self.files or  # file on disk that we haven't seen before
-                ts_round(os.stat(path).st_mtime) > self.files[relpath].timestamp  # update for a file we know about
+                relpath not in self.files or
+                ts_round(os.stat(path).st_mtime) > self.files[relpath].timestamp
             ):
                 self.update(relpath, {
                     "versions": [{
                         "timestamp": ts_round(os.stat(path).st_mtime),
                         "chunks": None,
+                    }]
+                })
+
+        for file in self.files.values():
+            # "not supposed to be deleted, but it is" -> it has been
+            # deleted while we weren't looking.
+            if not file.deleted and not os.path.exists(file.fullpath):
+                # We don't know when it was deleted, so add the deletion
+                # tag as just after the last modification (ie, mark that
+                # version as deleted, but any newer remote version takes
+                # precedence)
+                self.update(file.filename, {
+                    "versions": [{
+                        "timestamp": ts_round(file.timestamp + 1),
+                        "chunks": [],
+                        "deleted": True,
                     }]
                 })
 
@@ -250,9 +272,12 @@ class Repo(ProcessEvent):
         Start monitoring for file changes
         """
         if self.type == "share":
+            self.log("Checking for files updated while we were offline")
+            self.__add_local_files()
             self.log("Watching %s for file changes" % self.root)
             self.notifier.start()
-            self.__add_local_files()
+        else:
+            self.log("Not watching %s for file changes" % self.root)
 
         self.self_heal()
 
@@ -274,8 +299,10 @@ class Repo(ProcessEvent):
             return
         path = self.__relpath(event.pathname)
         self.update(path, filedata={
-            "timestamp": int(os.stat(event.pathname).st_mtime),
-            "chunks": None,
+            "versions": [{
+                "timestamp": int(os.stat(event.pathname).st_mtime),
+                "chunks": None,
+            }]
         })
 
 #    def process_IN_MODIFY(self, event):
@@ -283,9 +310,11 @@ class Repo(ProcessEvent):
 #            return
 #        path = self.__relpath(event.pathname)
 #        self.update(path, filedata={
-#            "deleted": False,
-#            "timestamp": int(os.stat(event.pathname).st_mtime),
-#            "chunks": None,
+#            "versions": [{
+#                "deleted": False,
+#                "timestamp": int(os.stat(event.pathname).st_mtime),
+#                "chunks": None,
+#            }]
 #        })
 
     def process_IN_DELETE(self, event):
@@ -293,7 +322,9 @@ class Repo(ProcessEvent):
             return
         path = self.__relpath(event.pathname)
         self.update(path, filedata={
-            "deleted": True,
-            "timestamp": int(time()),
-            "chunks": [],
+            "versions": [{
+                "deleted": True,
+                "timestamp": int(time()),
+                "chunks": [],
+            }]
         })

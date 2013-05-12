@@ -4,6 +4,7 @@ import argparse
 import sys
 import json
 import os
+import readline
 from glob import glob
 
 from chunker.repo import Repo
@@ -11,27 +12,107 @@ from chunker.util import get_config_path, heal, log
 from chunker.net import MetaNet
 
 
-config_file_path = get_config_path("main.conf")
+class NonExitingArgumentParser(argparse.ArgumentParser):
+    def exit(self, status=0, message=None):
+        raise Exception(message)
 
 
-def cmd_chunk(args, config):
-    r = Repo(args.output, args.input, args.name or os.path.basename(args.input))
-    r.save(args.output, state=False)
-    return {"status": "ok"}
+class Main(object):
+    def __init__(self, args=[]):
+        self.config_file_path = get_config_path("main.conf")
+        try:
+            self.config = json.loads(open(self.config_file_path).read())
+        except Exception as e:
+            log("Error loading default config: %s" % str(e))
+            self.config = {}
+
+        self.repos = []
+        for filename in glob(get_config_path("*.state")):
+            repo = Repo(filename)
+            self.repos.append(repo)
+
+        if args:
+            print self.do(args)
+        else:
+            self.main_loop()
+
+    def main_loop(self):
+        #self.mn = MetaNet(self.config)
+
+        log("Activating repos")
+        for repo in self.repos:
+            log("Activating %s" % repo)
+            repo.start()
+
+        while True:
+            try:
+                cmd = raw_input("chunker> ")
+                print self.do(cmd.split())
+            except (KeyboardInterrupt, EOFError) as e:
+                break
+            except Exception as e:
+                print {"status": "error", "message": str(e)}
+
+    def do(self, argv):
+        parser = NonExitingArgumentParser(description="a thing")
+        subparsers = parser.add_subparsers()
+
+        p_add = subparsers.add_parser("add")
+        p_add.add_argument("--name")
+        p_add.add_argument("chunkfile")
+        p_add.add_argument("directory")
+        p_add.set_defaults(func=self.cmd_add)
+
+        p_create = subparsers.add_parser("create")
+        p_create.add_argument("chunkfile")
+        p_create.add_argument("directory")
+        p_create.add_argument("--name")
+        p_create.add_argument("--add", default=False, action="store_true")
+        p_create.set_defaults(func=self.cmd_create)
+
+        x = """
+        p_heal = subparsers.add_parser("heal")
+        #p_heal.add_argument("filename")
+        #p_heal.add_argument("directory")
+        p_heal.set_defaults(func=cmd_heal)
+
+        p_fetch = subparsers.add_parser("fetch")
+        p_fetch.set_defaults(func=cmd_fetch)
+
+        p_stat = subparsers.add_parser("stat")
+        p_stat.add_argument("filename")
+        p_stat.add_argument("directory")
+        p_stat.set_defaults(func=cmd_stat)
+        """
+
+        args = parser.parse_args(argv)
+        return args.func(args)
+
+    def cmd_add(self, args):
+        r = Repo(
+            args.chunkfile,
+            args.directory,
+            args.name or os.path.basename(args.directory),
+        )
+        r.save_state()
+        self.repos.append(r)
+        r.start()
+        return {"status": "ok"}
+
+    def cmd_create(self, args):
+        r = Repo(args.chunkfile, args.directory, args.name or os.path.basename(args.input))
+        r.save(args.output, state=False)
+        if args.add:
+            r.save_state()
+            self.repos.append(r)
+            r.start()
+        return {"status": "ok"}
+
+    def cmd_save(self, args):
+        file(self.config_file_path, "w").write(json.dumps(self.config))
+        return {"status": "ok"}
 
 
-def cmd_save(args, config):
-    file(config_file_path, "w").write(json.dumps(config))
-    return {"status": "ok"}
-
-
-def cmd_add(args, config):
-    r = Repo(
-        args.filename,
-        args.directory,
-        args.name or os.path.basename(args.directory),
-    )
-    r.save_state()
 
 
 def cmd_heal(args, config):
@@ -89,61 +170,11 @@ def cmd_stat(args, config):
     print "Saved %d bytes from deduplication" % saved
 
 
+
+
+
 def main():
-    try:
-        config = json.loads(open(config_file_path).read())
-    except Exception as e:
-        log("Error loading default config: %s" % str(e))
-        config = {}
-    args = sys.argv[1:]
-    if args:
-        do(args, config)
-    else:
-        while True:
-            cmd = raw_input("chunker> ")
-            try:
-                print do(cmd.split(), config)
-            except Exception as e:
-                print {"status": "error", "message": str(e)}
-
-
-class NonExitingArgumentParser(argparse.ArgumentParser):
-    def exit(self, status=0, message=None):
-        raise Exception(message)
-
-
-def do(argv, config):
-    parser = NonExitingArgumentParser(description="a thing")
-    subparsers = parser.add_subparsers()
-
-    p_chunk = subparsers.add_parser("chunk")
-    p_chunk.add_argument("output")
-    p_chunk.add_argument("input")
-    p_chunk.add_argument("--name")
-    p_chunk.set_defaults(func=cmd_chunk)
-
-    p_heal = subparsers.add_parser("heal")
-    #p_heal.add_argument("filename")
-    #p_heal.add_argument("directory")
-    p_heal.set_defaults(func=cmd_heal)
-
-    p_add = subparsers.add_parser("add")
-    p_add.add_argument("--name")
-    p_add.add_argument("filename")
-    p_add.add_argument("directory")
-    p_add.set_defaults(func=cmd_add)
-
-    p_fetch = subparsers.add_parser("fetch")
-    p_fetch.set_defaults(func=cmd_fetch)
-
-    p_stat = subparsers.add_parser("stat")
-    p_stat.add_argument("filename")
-    p_stat.add_argument("directory")
-    p_stat.set_defaults(func=cmd_stat)
-
-    args = parser.parse_args(argv)
-    return args.func(args, config)
-
+    Main(sys.argv[1:])
 
 if __name__ == "__main__":
-    sys.exit(main())
+    Main(sys.argv[1:])

@@ -1,3 +1,5 @@
+import os
+
 from .chunk import Chunk
 
 
@@ -47,7 +49,7 @@ class FileVersion(object):
             for chunk in version.chunks:
                 chunk.validate()
         elif os.path.exists(file.fullpath):
-            version.chunks = get_chunks(file.fullpath, version)
+            version.chunks = file.get_chunks()
         return version
 
     def to_struct(self, state=False, history=False):

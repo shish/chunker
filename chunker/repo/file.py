@@ -1,6 +1,10 @@
 import os
+import hashlib
 
+from .chunk import Chunk
 from .fileversion import FileVersion
+
+HASH_TYPE = "sha256"
 
 class File(object):
     def __init__(self, repo, filename, chunks=None):
@@ -22,7 +26,7 @@ class File(object):
 
     def to_struct(self, state=False, history=False):
         data = {}
-        if history:
+        if history or state:
             data["versions"] = [version.to_struct(state=state, history=history) for version in self.versions]
         else:
             data["versions"] = [self.current_version().to_struct(state=state, history=history)]
@@ -65,19 +69,10 @@ class File(object):
             data = fp.read(bite_size)
             if not data:
                 break
-            data = encrypt(data, self.repo.key)
+            data = self.repo.encrypt(data)
             if len(data) < bite_size:
                 eof = True
-            if parent:
-                chunks.append(Chunk(parent, offset, len(data), HASH_TYPE, hashlib.new(HASH_TYPE, data).hexdigest(), True))
-            else:
-                chunks.append({
-                    "hash_type": HASH_TYPE,
-                    "hash": hashlib.new(HASH_TYPE, data).hexdigest(),
-                    "offset": offset,
-                    "length": len(data),
-                    "saved": True,
-                })
+            chunks.append(Chunk(self, offset, len(data), HASH_TYPE, hashlib.new(HASH_TYPE, data).hexdigest(), True))
             offset = offset + len(data)
         return chunks
 

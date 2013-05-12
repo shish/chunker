@@ -3,9 +3,6 @@ import hashlib
 #if sys.version_info < (3, 4):
 #   import sha3
 
-HASH_TYPE = "sha256"
-
-
 class Chunk(object):
     def __init__(self, file, offset, length, hash_type, hash, saved=False):
         self.file = file
