@@ -1,0 +1,51 @@
+<html>
+	<head>
+		<title>Chunker</title>
+		<link rel="shortcut icon" href="/static/icon.ico" type="image/x-icon">
+	</head>
+	<body>
+
+		<pre id="state"></pre>
+
+		<form action="/api/quit">
+			<br><input type="submit" value="Shut Down">
+		</form>
+
+		<form action="/api/state">
+			<br><input type="submit" value="View State">
+		</form>
+
+		<form action="/api/create">
+			<input type="text" name="chunkfile" placeholder=".chunker filename">
+			<input type="text" name="directory" placeholder="Source directory">
+			<input type="text" name="name" placeholder="Name (Optional)">
+			<input type="text" name="key" placeholder="Key (Optional)">
+			<br><input type="submit" value="Create">
+		</form>
+
+		<form action="/api/add">
+			<input type="text" name="chunkfile" placeholder=".chunker filename">
+			<input type="text" name="directory" placeholder="Source directory">
+			<br><input type="submit" value="Add">
+		</form>
+
+		<form action="/api/fetch">
+			<input type="submit" value="Fetch Active Repos">
+		</form>
+
+		<script src="//ajax.googleapis.com/ajax/libs/jquery/1.9.1/jquery.min.js"></script>
+		<script>
+		$.ajax({
+			"dataType": "json",
+			"url": "/api/state.json"
+		}).done(function(data) {
+			var text = "";
+			$.each(data.repos, function(i, repo) {
+				text = text + repo.name;
+				text = text + "<br>";
+			});
+			$("#state").html(text);
+		});
+		</script>
+	</body>
+</html>

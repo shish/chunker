@@ -1,3 +1,4 @@
+import os
 import web
 import json
 
@@ -19,20 +20,16 @@ class api:
             return json.dumps({"status": "error", "message": str(e)})
 
 
-class favicon:
-    def GET(self):
-        return ""
-
-
 class index:
     def GET(self):
-        return ""
+        return file("static/index.html").read()
 
 
 def main():
+    os.chdir(os.path.dirname(__file__))
     app = web.application((
+        '/api/(.*).json', 'api',
         '/api/(.*)', 'api',
-        '/favicon.ico', 'favicon',
         '/', 'index',
     ), globals())
     app.run()
