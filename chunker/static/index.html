@@ -16,17 +16,25 @@
 		</form>
 
 		<form action="/api/create">
-			<input type="text" name="chunkfile" placeholder=".chunker filename">
 			<input type="text" name="directory" placeholder="Source directory">
+			<input type="text" name="chunkfile" placeholder=".chunker filename">
 			<input type="text" name="name" placeholder="Name (Optional)">
 			<input type="text" name="key" placeholder="Key (Optional)">
 			<br><input type="submit" value="Create">
 		</form>
 
 		<form action="/api/add">
+			<input type="hidden" name="type" value="static">
 			<input type="text" name="chunkfile" placeholder=".chunker filename">
+			<input type="text" name="directory" placeholder="Target directory">
+			<br><input type="submit" value="Add Static">
+		</form>
+
+		<form action="/api/add">
+			<input type="hidden" name="type" value="share">
+			<input type="text" name="uuid" placeholder="UUID">
 			<input type="text" name="directory" placeholder="Source directory">
-			<br><input type="submit" value="Add">
+			<br><input type="submit" value="Add Share">
 		</form>
 
 		<form action="/api/fetch">
@@ -35,15 +43,29 @@
 
 		<script src="//ajax.googleapis.com/ajax/libs/jquery/1.9.1/jquery.min.js"></script>
 		<script>
+if (!String.prototype.format) {
+  String.prototype.format = function() {
+    var args = arguments;
+    return this.replace(/{(\d+)}/g, function(match, number) {
+      return typeof args[number] != 'undefined'
+        ? args[number]
+        : match
+      ;
+    });
+  };
+}
 		$.ajax({
 			"dataType": "json",
 			"url": "/api/state.json"
 		}).done(function(data) {
-			var text = "";
+			var text = "<table>";
 			$.each(data.repos, function(i, repo) {
-				text = text + repo.name;
-				text = text + "<br>";
+				text = text + "<tr>" +
+				"<td>{0} ({1})<br><small>{2}</small><br><small>{3}</small></td>".format(repo.name, repo.type, repo.root, repo.uuid) +
+				"<td><a href='/api/remove'>Remove</a></td>" +
+				"</tr>";
 			});
+			text = text + "</table>";
 			$("#state").html(text);
 		});
 		</script>
