@@ -29,6 +29,8 @@ class Repo(ProcessEvent):
             username - for change log
             hostname - for change log
         """
+        self.notifier = None
+
         if not filename and not kwargs:
             raise Exception("Repo has no initialisation data")
 
@@ -60,14 +62,6 @@ class Repo(ProcessEvent):
         if (self.type == "static" and not self.files):
             self.__add_local_files()
 
-        if self.type == "share":
-            watcher = WatchManager()
-            watcher.add_watch(self.root, ALL_EVENTS, rec=True, auto_add=True)
-            self.notifier = ThreadedNotifier(watcher, self)
-            self.notifier.daemon = True
-        else:
-            self.notifier = None
-
     def to_struct(self, state=False):
         """
         Serialise the repository into a JSON-compatible dictionary
@@ -98,7 +92,12 @@ class Repo(ProcessEvent):
         Save the repository state to the default state location
         (eg ~/.config/chunker/<uuid>.state on unix)
         """
-        self.save(get_config_path(self.uuid+".state"), state=True, compress=True)
+        self.save(get_config_path(self.uuid + ".state"), state=True, compress=True)
+
+    def remove_state(self):
+        p = get_config_path(self.uuid + ".state")
+        if os.path.exists(p):
+            os.unlink(p)
 
     def save(self, filename=None, state=False, compress=False):
         """
@@ -278,6 +277,10 @@ class Repo(ProcessEvent):
             self.log("Checking for files updated while we were offline")
             self.__add_local_files()
             self.log("Watching %s for file changes" % self.root)
+            watcher = WatchManager()
+            watcher.add_watch(self.root, ALL_EVENTS, rec=True, auto_add=True)
+            self.notifier = ThreadedNotifier(watcher, self)
+            self.notifier.daemon = True
             self.notifier.start()
         else:
             self.log("Not watching %s for file changes" % self.root)
@@ -291,6 +294,7 @@ class Repo(ProcessEvent):
         if self.notifier:
             self.log("No longer watching %s for file changes" % self.root)
             self.notifier.stop()
+            self.notifier = None
 
     def __relpath(self, path):
         base = os.path.abspath(self.root)

@@ -6,6 +6,7 @@
 	<body>
 
 		<pre id="state"></pre>
+		<pre id="debug"></pre>
 
 		<form action="/api/quit">
 			<br><input type="submit" value="Shut Down">
@@ -42,32 +43,7 @@
 		</form>
 
 		<script src="//ajax.googleapis.com/ajax/libs/jquery/1.9.1/jquery.min.js"></script>
-		<script>
-if (!String.prototype.format) {
-  String.prototype.format = function() {
-    var args = arguments;
-    return this.replace(/{(\d+)}/g, function(match, number) {
-      return typeof args[number] != 'undefined'
-        ? args[number]
-        : match
-      ;
-    });
-  };
-}
-		$.ajax({
-			"dataType": "json",
-			"url": "/api/state.json"
-		}).done(function(data) {
-			var text = "<table>";
-			$.each(data.repos, function(i, repo) {
-				text = text + "<tr>" +
-				"<td>{0} ({1})<br><small>{2}</small><br><small>{3}</small></td>".format(repo.name, repo.type, repo.root, repo.uuid) +
-				"<td><a href='/api/remove'>Remove</a></td>" +
-				"</tr>";
-			});
-			text = text + "</table>";
-			$("#state").html(text);
-		});
-		</script>
+		<script src="/static/lib.js"></script>
+		<script src="/static/ui.js"></script>
 	</body>
 </html>

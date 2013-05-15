@@ -8,6 +8,7 @@ from chunker.args import WebArgumentParser, ArgParseException
 
 core = Core()
 core._init_parser(WebArgumentParser)
+core.start()
 
 
 class api:

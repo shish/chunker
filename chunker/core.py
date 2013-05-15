@@ -29,16 +29,17 @@ class Core(object):
             repo = Repo(filename, config=self.config)
             self.repos.append(repo)
 
+    def start(self):
+        for r in self.repos:
+            r.start()
+
+    def stop(self):
+        for r in self.repos:
+            r.stop()
+
     def _init_parser(self, pclass):
         self.parser = pclass(description="a thing")
         subparsers = self.parser.add_subparsers()
-
-        p_add = subparsers.add_parser("add")
-        p_add.add_argument("--chunkfile", required=True)
-        p_add.add_argument("--directory")
-        p_add.add_argument("--name")
-        p_add.add_argument("--key")
-        p_add.set_defaults(func=self.cmd_add)
 
         p_create = subparsers.add_parser("create")
         p_create.add_argument("--chunkfile", required=True)
@@ -48,6 +49,17 @@ class Core(object):
         p_create.add_argument("--type", default="static")
         p_create.add_argument("--add", default=False, action="store_true")
         p_create.set_defaults(func=self.cmd_create)
+
+        p_add = subparsers.add_parser("add")
+        p_add.add_argument("--chunkfile", required=True)
+        p_add.add_argument("--directory")
+        p_add.add_argument("--name")
+        p_add.add_argument("--key")
+        p_add.set_defaults(func=self.cmd_add)
+
+        p_remove = subparsers.add_parser("remove")
+        p_remove.add_argument("--uuid")
+        p_remove.set_defaults(func=self.cmd_remove)
 
         p_heal = subparsers.add_parser("heal")
         p_heal.set_defaults(func=self.cmd_heal)
@@ -64,6 +76,16 @@ class Core(object):
         p_quit = subparsers.add_parser("quit")
         p_quit.set_defaults(func=self.cmd_quit)
 
+    def cmd_create(self, args):
+        r = Repo(type=args.type, root=args.directory, name=args.name, key=args.key, config=self.config)
+        if args.chunkfile:
+            r.save(args.chunkfile, state=False)
+        if args.add:
+            r.save_state()
+            self.repos.append(r)
+            r.start()
+        return {"status": "ok"}
+
     def cmd_add(self, args):
         chunkfile = os.path.abspath(args.chunkfile)
         if not os.path.exists(chunkfile):
@@ -75,15 +97,21 @@ class Core(object):
         r.start()
         return {"status": "ok"}
 
-    def cmd_create(self, args):
-        r = Repo(type=args.type, root=args.directory, name=args.name, key=args.key, config=self.config)
-        if args.chunkfile:
-            r.save(args.chunkfile, state=False)
-        if args.add:
-            r.save_state()
-            self.repos.append(r)
-            r.start()
-        return {"status": "ok"}
+    def cmd_remove(self, args):
+        repo = None
+        for r in self.repos:
+            if r.uuid == args.uuid:
+                repo = r
+                break
+
+        if repo:
+            log("Removing %s" % repo.name)
+            repo.stop()
+            repo.remove_state()
+            self.repos[:] = [r for r in self.repos if r.uuid != args.uuid]
+            return {"status": "ok", "message": "Removed %s" % repo.name}
+        else:
+            return {"status": "error", "message": "Can't find that repo"}
 
     def cmd_heal(self, args):
         known = []

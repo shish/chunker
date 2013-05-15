@@ -1,0 +1,36 @@
+
+Done:
+- Create / Add / Remove repositories
+  - Self-heal using chunks from other repos
+- Keep disk state in sync with memory
+  - files changed / deleted while running
+  - files changed / deleted while not running
+- Version history
+  - file content (file state, chunk IDs)
+- Interface
+  - CLI
+  - Web
+  - API
+  - All are thin wrappers built on the same core
+
+Todo:
+- Unit tests for the "done" things above
+- Manage blank directories?
+- Create directories as needed
+- Encryption (part done)
+- Version history
+  - username
+  - hostname
+- Broadcast changes as they happen
+- Only sync sub-paths
+- Fetch chunkfile by uuid
+- BitTorrent's UUIDs being the hash of the metadata ensures that
+  one can't tamper with the data without creating a totally different
+  torrent, which clients of the first will ignore. That's pretty cool
+- Broadcast mode:
+  - "ignore remote updates" repo flag
+  - "ignore local updates" repo flag
+  - a malicious client can ignore this and send updates if they want to
+- Some mechanism where only certain people can send updates for a share
+  - Public key crypto? "Only accept repo updates signed by [x, y, z]"
+
