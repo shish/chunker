@@ -18,9 +18,12 @@ Todo:
 - Manage blank directories?
 - Create directories as needed
 - Encryption (part done)
+- username:[public-key] table
 - Version history
   - username
   - hostname
+  - public key signature of each version?
+    - hash chunklist
 - Broadcast changes as they happen
 - Only sync sub-paths
 - Fetch chunkfile by uuid
@@ -34,3 +37,8 @@ Todo:
 - Some mechanism where only certain people can send updates for a share
   - Public key crypto? "Only accept repo updates signed by [x, y, z]"
 
+- Per-repo chat?
+  - separate project?
+  - use repo UUID as channel UUID
+  - DHT crossed with IRC
+  - signed / encrypted messages

@@ -1,4 +1,5 @@
 import argparse
+import urlparse
 
 
 class ArgParseException(Exception):
@@ -35,17 +36,26 @@ class WebArgumentParser(NonExitingArgumentParser):
            args = getParser(WebArgumentParser).parse(request.path, request.GET)
            return args.func(args)
     """
-    def parse_args(self, path, params):
+    def url_to_args(self, url):
+        parts = urlparse.urlparse(url)
+        path = parts.path.strip("/")
+        params = urlparse.parse_qs(parts.query)
+
         args = []
 
         for part in path.split("/"):
             args.append(str(part))
 
-        for key, value in params.items():
-            if value == "on":  # we assume that "on" is a boolean flag
-                args.append("--"+key)
-            else:
-                args.append("--"+key)
-                args.append(value)
+        for key, value_list in params.items():
+            for value in value_list:
+                if value == "on":  # we assume that "on" is a boolean flag
+                    args.append("--"+key)
+                else:
+                    args.append("--"+key)
+                    args.append(value)
 
+        return args
+
+    def parse_args(self, url):
+        args = self.url_to_args(url)
         return argparse.ArgumentParser.parse_args(self, args)
