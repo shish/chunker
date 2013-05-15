@@ -36,11 +36,7 @@ class WebArgumentParser(NonExitingArgumentParser):
            args = getParser(WebArgumentParser).parse(request.path, request.GET)
            return args.func(args)
     """
-    def url_to_args(self, url):
-        parts = urlparse.urlparse(url)
-        path = parts.path.strip("/")
-        params = urlparse.parse_qs(parts.query)
-
+    def path_params_to_args(self, path, params):
         args = []
 
         for part in path.split("/"):
@@ -56,6 +52,13 @@ class WebArgumentParser(NonExitingArgumentParser):
 
         return args
 
-    def parse_args(self, url):
-        args = self.url_to_args(url)
+    def url_to_args(self, url, extra_params):
+        parts = urlparse.urlparse(url)
+        path = parts.path.strip("/")
+        params = urlparse.parse_qs(parts.query)
+        params.update(extra_params)
+        return self.path_params_to_args(path, params)
+
+    def parse_args(self, url, params={}):
+        args = self.url_to_args(url, params)
         return argparse.ArgumentParser.parse_args(self, args)
