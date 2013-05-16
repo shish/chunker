@@ -14,12 +14,27 @@ function update_state() {
 		"state", {},
 		function(data) {
 			var text = "<table>";
-			$.each(data.repos, function(i, repo) {
+			$.each(data.repos, function(i1, repo) {
+				var done_bytes = 0;
+				var missing_bytes = 0;
+				$.each(repo.files, function(i2, file) {
+					$.each(file.versions[file.versions.length - 1].chunks, function(i3, chunk) {
+						if(chunk.saved) {
+							done_bytes += chunk.length;
+						}
+						else {
+							missing_bytes += chunk.length;
+						}
+					});
+				});
 				text = text + "<tr>" +
 					"<td>"+
 						"{0} ({1})".format(repo.name, repo.type) +
 						"<br><small>{0}</small>".format(repo.root) +
 						"<br><small>{0}</small>".format(repo.uuid) +
+					"</td>" +
+					"<td>" +
+						"{0}%".format((100 * done_bytes) / (done_bytes + missing_bytes)) +
 					"</td>" +
 					"<td>" +
 						"<a href='javascript: remove(\"{0}\");'>Remove</a>".format(repo.uuid) +
