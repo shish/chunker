@@ -30,7 +30,10 @@ class index:
 class download:
     def GET(self, uuid, name):
         if uuid in core.repos:
-            return json.dumps(core.repos[uuid].to_struct(state=False))
+            repo = core.repos[uuid]
+            web.header('Content-Type', 'application/chunker') # file type
+            web.header('Content-Disposition', 'attachment; filename=' + repo.name + ".chunker")
+            return json.dumps(repo.to_struct(state=False))
         else:
             return "Can't find repo '%s'" % uuid
 
@@ -40,7 +43,7 @@ def main():
     app = web.application((
         '/api/(.*).json', 'api',
         '/api/(.*)', 'api',
-        '/download/(.*)/(.*).state', 'download',
+        '/download/(.*)/(.*).chunker', 'download',
         '/', 'index',
     ), globals())
     app.run()
