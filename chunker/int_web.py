@@ -4,6 +4,7 @@ import json
 
 from chunker.core import Core
 from chunker.args import WebArgumentParser, ArgParseException
+from chunker.util import get_config_path
 
 
 core = Core()
@@ -26,11 +27,20 @@ class index:
         return file("static/index.html").read()
 
 
+class download:
+    def GET(self, uuid, name):
+        if uuid in core.repos:
+            return json.dumps(core.repos[uuid].to_struct(state=False))
+        else:
+            return "Can't find repo '%s'" % uuid
+
+
 def main():
     os.chdir(os.path.dirname(__file__))
     app = web.application((
         '/api/(.*).json', 'api',
         '/api/(.*)', 'api',
+        '/download/(.*)/(.*).state', 'download',
         '/', 'index',
     ), globals())
     app.run()
