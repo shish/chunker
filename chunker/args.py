@@ -42,13 +42,16 @@ class WebArgumentParser(NonExitingArgumentParser):
         for part in path.split("/"):
             args.append(str(part))
 
-        for key, value_list in params.items():
-            for value in value_list:
-                if value == "on":  # we assume that "on" is a boolean flag
+        for key, value in params.items():
+            if value == "on":  # we assume that "on" is a boolean flag
+                args.append("--"+key)
+            elif type(value) == list:
+                for item in value:
                     args.append("--"+key)
-                else:
-                    args.append("--"+key)
-                    args.append(value)
+                    args.append(item)
+            else:
+                args.append("--"+key)
+                args.append(value)
 
         return args
 
