@@ -24,17 +24,17 @@ class Core(object):
 
         self.mn = None
 
-        self.repos = []
+        self.repos = {}
         for filename in glob(get_config_path("*.state")):
             repo = Repo(filename, config=self.config)
-            self.repos.append(repo)
+            self.repos[repo.uuid] = repo
 
     def start(self):
-        for r in self.repos:
+        for r in self.repos.values():
             r.start()
 
     def stop(self):
-        for r in self.repos:
+        for r in self.repos.values():
             r.stop()
 
     def _init_parser(self, pclass):
@@ -82,7 +82,7 @@ class Core(object):
             r.save(args.chunkfile, state=False)
         if args.add:
             r.save_state()
-            self.repos.append(r)
+            self.repos[r.uuid] = r
             r.start()
         return {"status": "ok"}
 
@@ -93,22 +93,17 @@ class Core(object):
 
         r = Repo(filename=chunkfile, root=args.directory, name=args.name, key=args.key, config=self.config)
         r.save_state()
-        self.repos.append(r)
+        self.repos[r.uuid] = r
         r.start()
         return {"status": "ok"}
 
     def cmd_remove(self, args):
-        repo = None
-        for r in self.repos:
-            if r.uuid == args.uuid:
-                repo = r
-                break
-
-        if repo:
+        if args.uuid in self.repos:
+            repo = self.repos[args.uuid]
             log("Removing %s" % repo.name)
             repo.stop()
             repo.remove_state()
-            self.repos[:] = [r for r in self.repos if r.uuid != args.uuid]
+            del self.repos[args.uuid]
             return {"status": "ok", "message": "Removed %s" % repo.name}
         else:
             return {"status": "error", "message": "Can't find that repo"}
@@ -116,7 +111,7 @@ class Core(object):
     def cmd_heal(self, args):
         known = []
         missing = []
-        for r in self.repos:
+        for r in self.repos.values():
             known.extend(r.get_known_chunks())
             missing.extend(r.get_missing_chunks())
         saved = heal(known, missing)
@@ -129,7 +124,7 @@ class Core(object):
     def cmd_fetch(self, args):
         all_known_chunks = []
         all_missing_chunks = []
-        for repo in self.repos:
+        for repo in self.repos.values():
             all_known_chunks.extend(repo.get_known_chunks())
             all_missing_chunks.extend(repo.get_missing_chunks())
 
@@ -148,7 +143,7 @@ class Core(object):
         fmt = "%-15s %-7s %-s"
         print fmt % ("name", "type", "files")
         print fmt % ("~~~~", "~~~~", "~~~~~")
-        for repo in self.repos:
+        for repo in self.repos.values():
             files = "%d/%d" % (len(repo.files), len([f for f in repo.files.values() if f.is_complete()]))
             print fmt % (repo.name, repo.type, files)
         return {"status": "ok"}
@@ -156,7 +151,7 @@ class Core(object):
     def cmd_state(self, args):
         return {
             "status": "ok",
-            "repos": [repo.to_struct(state=True) for repo in self.repos],
+            "repos": dict([(repo.uuid, repo.to_struct(state=True)) for repo in self.repos]),
         }
 
     def cmd_quit(self, args):
