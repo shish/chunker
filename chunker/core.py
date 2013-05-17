@@ -151,7 +151,7 @@ class Core(object):
     def cmd_state(self, args):
         return {
             "status": "ok",
-            "repos": dict([(repo.uuid, repo.to_struct(state=True)) for repo in self.repos]),
+            "repos": dict([(name, repo.to_struct(state=True)) for name, repo in self.repos.items()]),
         }
 
     def cmd_quit(self, args):
