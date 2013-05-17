@@ -57,9 +57,19 @@ function remove(uuid) {
 	);
 }
 
-function showForm(name) {
+function show_form(name) {
 	$(".form").hide();
 	$(".form."+name).show();
+}
+
+function random_key(box_id) {
+	function random_string(length) {
+		var chars = '0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ';
+		var result = '';
+		for (var i = length; i > 0; --i) result += chars[Math.round(Math.random() * (chars.length - 1))];
+		return result;
+	}
+	$(box_id).val(random_string(128));
 }
 
 $(function() {

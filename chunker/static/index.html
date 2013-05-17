@@ -36,18 +36,22 @@ INPUT {
 
 		<h1>Chunker!</h1>
 		<tt id="links">
-			<a href="javascript: showForm('create');">Create Repo</a> |
-			<a href="javascript: showForm('add');">Add Repo</a> |
+			<a href="javascript: show_form('create');">Create Repo</a> |
+			<a href="javascript: show_form('add');">Add Repo</a> |
 		</tt>
 		<pre id="state">[state table]</pre>
 		<pre id="debug">[debug info]</pre>
 
 		<form action="/api/create" class="form create">
-			<input type="text" name="directory" placeholder="Source directory">
-			<br><input type="text" name="chunkfile" placeholder=".chunker filename">
+			<input type="hidden" name="add" value="on" />
+			<select name="type">
+				<option value="share">Share</option>
+				<option value="static">Static</option>
+			</select>
+			<br><input type="text" name="directory" placeholder="Source directory">
 			<br><input type="text" name="name" placeholder="Name (Optional)">
-			<br><input type="text" name="key" placeholder="Key (Optional)">
-			<br><label><input type="checkbox" name="add">Add</label>
+			<br><input type="text" name="key" placeholder="Key (Optional)" id="createKeyBox">
+			    <input type="button" onclick="random_key('#createKeyBox')" value="Random">
 			<br><input type="submit" value="Create">
 		</form>
 
