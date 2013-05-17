@@ -42,7 +42,7 @@ class Core(object):
         subparsers = self.parser.add_subparsers()
 
         p_create = subparsers.add_parser("create")
-        p_create.add_argument("--chunkfile", required=True)
+        p_create.add_argument("--chunkfile")
         p_create.add_argument("--directory", required=True)
         p_create.add_argument("--name")
         p_create.add_argument("--key")
