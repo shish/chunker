@@ -38,6 +38,7 @@ function update_state() {
 					"</td>" +
 					"<td>" +
 						"<a href='javascript: remove(\"{0}\");'>Remove</a>".format(repo.uuid) +
+						"<br><a href='/download/{0}/{1}.chunker'>Get Chunkfile</a>".format(repo.uuid, repo.name) +
 					"</td>" +
 				"</tr>";
 			});
@@ -56,8 +57,14 @@ function remove(uuid) {
 	);
 }
 
+function showForm(name) {
+	$(".form").hide();
+	$(".form."+name).show();
+}
+
 $(function() {
 
+	$(".form").hide();
 	update_state();
 	setInterval(update_state, 10*1000);
 

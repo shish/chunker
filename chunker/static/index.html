@@ -2,48 +2,80 @@
 	<head>
 		<title>Chunker</title>
 		<link rel="shortcut icon" href="/static/icon.ico" type="image/x-icon">
+		<style>
+BODY {
+	font-family: sans-serif;
+	background-color: #D0D4D5;
+}
+#debug {
+	position: fixed;
+	bottom: 0px;
+	left: 0px;
+	right: 0px;
+	background: white;
+	padding: 5px;
+	border-top: 1px solid gray;
+	border-bottom: 1px solid gray;
+}
+/* haxx0r */
+BODY {
+	background-color: #111;
+	color: green;
+}
+A {
+	color: #00FF00;
+}
+INPUT {
+	border: 1px solid green;
+	background: #222;
+	color: #00ff00;
+}
+		</style>
 	</head>
 	<body>
 
-		<pre id="state"></pre>
-		<pre id="debug"></pre>
+		<h1>Chunker!</h1>
+		<tt id="links">
+			<a href="javascript: showForm('create');">Create Repo</a> |
+			<a href="javascript: showForm('add');">Add Repo</a> |
+		</tt>
+		<pre id="state">[state table]</pre>
+		<pre id="debug">[debug info]</pre>
 
-		<form action="/api/quit">
-			<br><input type="submit" value="Shut Down">
-		</form>
-
-		<form action="/api/state">
-			<br><input type="submit" value="View State">
-		</form>
-
-		<form action="/api/create">
+		<form action="/api/create" class="form create">
 			<input type="text" name="directory" placeholder="Source directory">
-			<input type="text" name="chunkfile" placeholder=".chunker filename">
-			<input type="text" name="name" placeholder="Name (Optional)">
-			<input type="text" name="key" placeholder="Key (Optional)">
-			<label><input type="checkbox" name="add">Add</label>
+			<br><input type="text" name="chunkfile" placeholder=".chunker filename">
+			<br><input type="text" name="name" placeholder="Name (Optional)">
+			<br><input type="text" name="key" placeholder="Key (Optional)">
+			<br><label><input type="checkbox" name="add">Add</label>
 			<br><input type="submit" value="Create">
 		</form>
 
-		<form action="/api/add">
+		<form action="/api/add" class="form add">
 			<input type="hidden" name="type" value="static">
-			<input type="text" name="chunkfile" placeholder=".chunker filename">
-			<input type="text" name="directory" placeholder="Target directory">
+			<br><input type="text" name="chunkfile" placeholder=".chunker filename">
+			<br><input type="text" name="directory" placeholder="Target directory">
 			<br><input type="submit" value="Add Static">
 		</form>
 
-		<form action="/api/add">
+		<form action="/api/add" class="form add">
 			<input type="hidden" name="type" value="share">
-			<input type="text" name="uuid" placeholder="UUID">
-			<input type="text" name="directory" placeholder="Source directory">
+			<br><input type="text" name="uuid" placeholder="UUID">
+			<br><input type="text" name="directory" placeholder="Target directory">
 			<br><input type="submit" value="Add Share">
 		</form>
 
+		<!--
 		<form action="/api/fetch">
 			<input type="submit" value="Fetch Active Repos">
 		</form>
 
-		<script src="//ajax.googleapis.com/ajax/libs/jquery/1.9.1/jquery.min.js"></script>
+		<form action="/api/quit">
+			<br><input type="submit" value="Shut Down">
+		</form>
+		-->
+
+		<script src="/static/jquery-1.9.1.min.js"></script>
 		<script src="/static/lib.js"></script>
 		<script src="/static/ui.js"></script>
 	</body>
