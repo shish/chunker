@@ -14,6 +14,7 @@ Done:
   - All are thin wrappers built on the same core
 
 Todo:
+- JSON vs BSON?
 - Unit tests for the "done" things above
 - Manage blank directories?
 - Create directories as needed
