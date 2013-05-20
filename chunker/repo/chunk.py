@@ -14,9 +14,9 @@ class Chunk(object):
 
     def to_struct(self, state=False):
         data = {
-                "hash_type": self.hash_type,
-                "length": self.length,
-                "hash": self.hash,
+            "hash_type": self.hash_type,
+            "length": self.length,
+            "hash": self.hash,
         }
         if state:
             data["saved"] = self.saved
@@ -54,6 +54,9 @@ class Chunk(object):
             mtime = st.st_mtime
             f = open(self.file.fullpath,'r+b')
         else:
+            dirname = os.path.dirname(self.file.fullpath)
+            if not os.path.exists(dirname):
+                os.makedirs(dirname)
             atime = 0
             mtime = 0
             f = open(self.file.fullpath,'wb')
