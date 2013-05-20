@@ -22,7 +22,7 @@ class Core(object):
         except Exception as e:
             log("Error loading default config: %s" % str(e))
 
-        self.mn = None
+        self.mn = MetaNet(self.config)
 
         self.repos = {}
         for filename in glob(get_config_path("*.state")):
@@ -32,10 +32,12 @@ class Core(object):
     def start(self):
         for r in self.repos.values():
             r.start()
+        self.mn.start()
 
     def stop(self):
         for r in self.repos.values():
             r.stop()
+        self.mn.stop()
 
     def _init_parser(self, pclass):
         self.parser = pclass(description="a thing")
@@ -122,22 +124,8 @@ class Core(object):
         return {"status": "ok"}
 
     def cmd_fetch(self, args):
-        all_known_chunks = []
-        all_missing_chunks = []
-        for repo in self.repos.values():
-            all_known_chunks.extend(repo.get_known_chunks())
-            all_missing_chunks.extend(repo.get_missing_chunks())
-
-        if not self.mn:
-            self.mn = MetaNet(config)
-
-        for chunk in set(all_known_chunks):
-            self.mn.offer(chunk)
-
-        for chunk in set(all_missing_chunks):
-            self.mn.request(chunk)
-
-        import pdb; pdb.set_trace()
+        for repo in self.repos:
+            self.mn.register(repo)
 
     def cmd_list(self, args):
         fmt = "%-15s %-7s %-s"
