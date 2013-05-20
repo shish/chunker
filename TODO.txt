@@ -15,6 +15,7 @@ Done:
   - All are thin wrappers built on the same core
 
 Todo:
+- JSON vs BSON?
 - Unit tests for the "done" things above
 - Store rolling hash for chunks (only in state mode?) so that updated versions of files can be based on old versions efficiently
 - Manage blank directories?
