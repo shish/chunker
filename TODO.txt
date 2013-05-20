@@ -2,6 +2,7 @@
 Done:
 - Create / Add / Remove repositories
   - Self-heal using chunks from other repos
+  - Create directories as needed
 - Keep disk state in sync with memory
   - files changed / deleted while running
   - files changed / deleted while not running
@@ -15,8 +16,8 @@ Done:
 
 Todo:
 - Unit tests for the "done" things above
+- Store rolling hash for chunks (only in state mode?) so that updated versions of files can be based on old versions efficiently
 - Manage blank directories?
-- Create directories as needed
 - Encryption (part done)
 - username:[public-key] table
 - Version history
