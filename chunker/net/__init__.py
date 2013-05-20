@@ -1,5 +1,3 @@
-from chunker.net.local import Peer
-
 from chunker.net.local import LocalPeerFinder
 from chunker.net.dht import DHTPeerFinder
 from chunker.net.exchange import ExchangePeerFinder

@@ -1,11 +1,14 @@
 from datetime import datetime
 from pydht import DHT
+from time import sleep
+from socket import *
+from threading import Thread
 import stun
 import json
-from time import sleep
 import logging
 
-from chunker.net import PeerFinder, Peer
+from chunker.net.peerfinder import PeerFinder
+from chunker.net.peer import Peer
 
 
 log = logging.getLogger(__name__)
@@ -38,7 +41,7 @@ class LocalPeerFinder(PeerFinder):
                     repo.encrypt(repo.uuid.decode("hex")),
                     ("255.255.255.255", 54545)
                 )
-            sleep(15)  # low for debugging, probably want this higher
+            sleep(5)  # low for debugging, probably want this higher
 
     def run_recv(self):
         while True:
@@ -51,3 +54,30 @@ class LocalPeerFinder(PeerFinder):
                         repo.add_peer(Peer(addr))
             except Exception as e:
                 print e
+
+
+if __name__ == "__main__":
+    logging.basicConfig(level=logging.DEBUG)
+    class Core(object):
+        def __init__(self):
+            self.repos = []
+
+    class Repo(object):
+        def __init__(self, uuid):
+            self.uuid = uuid
+
+        def encrypt(self, data):
+            return data
+
+        def decrypt(self, data):
+            return data
+
+        def add_peer(self, peer):
+            logging.info("Got new peer for %s: %r" % (self.uuid, peer))
+
+    c = Core()
+    c.repos.append(Repo("b17081907ad57afb25c62e9970702381ea9c721745f42f6239ff0d5fbd26d309"))
+    l = LocalPeerFinder(c)
+    l.start()
+    print "Hit enter to exit"
+    raw_input()
