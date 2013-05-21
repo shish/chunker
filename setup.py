@@ -10,8 +10,8 @@ requires = [
     #'flexihash',
     #'pystun',
     #'PyDispatcher',
-    'pydht',
-    'pystun',
+    'pydht==0.0.3',
+    'pystun==0.0.2.1-shish',
     'pycrypto',
     'web.py',
 
@@ -38,6 +38,10 @@ setup(name='Chunker',
       zip_safe=False,
       test_suite='chunker',
       install_requires=requires,
+      dependency_links = [
+        'http://github.com/shish/pydht/tarball/master#egg=pydht-0.0.3',
+        'http://github.com/shish/pystun/tarball/master#egg=pystun-0.0.2.1-shish',
+      ],
       entry_points="""\
       [console_scripts]
       chunker = chunker.int_cli:main
