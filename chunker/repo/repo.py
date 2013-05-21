@@ -8,8 +8,12 @@ from datetime import datetime
 import os
 import uuid
 from time import time
+import logging
 
 from .file import File
+
+
+log = logging.getLogger(__name__)
 
 
 class Repo(ProcessEvent):
@@ -70,7 +74,7 @@ class Repo(ProcessEvent):
             "name": self.name,
             "type": self.type,
             "uuid": self.uuid,
-            "peers": self.peers,
+            "key": self.key,
             "files": dict([
                 (filename, file.to_struct(state=state))
                 for filename, file
@@ -79,7 +83,11 @@ class Repo(ProcessEvent):
         }
         if state:
             data.update({
-                "key": self.key,
+                "peers": [
+                    peer.to_struct(state=state)
+                    for peer
+                    in self.peers
+                ],
                 "root": self.root,
             })
         return data
@@ -129,7 +137,7 @@ class Repo(ProcessEvent):
         fp.close()
 
     def log(self, msg):
-        log("[%s] %s" % (self.name, msg))
+        log.info("[%s] %s" % (self.name, msg))
 
     ###################################################################
     # Metadata
@@ -212,7 +220,7 @@ class Repo(ProcessEvent):
 
     def add_peer(self, peer):
         if peer not in self.peers:
-            self._log("Found new peer: %r" % (peer, ))
+            self.log("Found new peer: %r" % (peer, ))
             self.peers.append(peer)
 
     ###################################################################

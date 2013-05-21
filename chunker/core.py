@@ -4,6 +4,7 @@ import os
 import readline
 import platform
 from glob import glob
+import logging
 
 from chunker.repo import Repo
 from chunker.util import get_config_path, heal, log
@@ -12,6 +13,8 @@ from chunker.net import MetaNet
 
 class Core(object):
     def __init__(self):
+        logging.basicConfig(level=logging.DEBUG)
+
         self.config_file_path = get_config_path("main.conf")
         self.config = {
             "username": "TODO",
@@ -22,7 +25,7 @@ class Core(object):
         except Exception as e:
             log("Error loading default config: %s" % str(e))
 
-        self.mn = MetaNet(self.config)
+        self.mn = MetaNet(self)
 
         self.repos = {}
         for filename in glob(get_config_path("*.state")):

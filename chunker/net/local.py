@@ -36,7 +36,7 @@ class LocalPeerFinder(PeerFinder):
     def run_send(self):
         while True:
             log.info("Broadcasting local repos")
-            for repo in self.core.repos:
+            for repo in self.core.repos.values():
                 self.socket.sendto(
                     repo.encrypt(repo.uuid.decode("hex")),
                     ("255.255.255.255", 54545)
@@ -48,7 +48,7 @@ class LocalPeerFinder(PeerFinder):
             raw_data, addr = self.socket.recvfrom(4096)
             log.info("Got possible repo broadcast from %s" % (addr, ))
             try:
-                for repo in self.core.repos:
+                for repo in self.core.repos.values():
                     data = repo.decrypt(raw_data).encode("hex").lower()
                     if data == repo.uuid:
                         repo.add_peer(Peer(addr))
