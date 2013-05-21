@@ -1,16 +1,18 @@
 from pyinotify import WatchManager, ThreadedNotifier, ProcessEvent, ALL_EVENTS
 from Crypto.Cipher import AES
 from glob import glob
-from chunker.util import log, get_config_path, heal, ts_round, sha256, config
 from select import select
+from threading import Thread
+from datetime import datetime
+from time import time, sleep
 import json
 import gzip
-from datetime import datetime
 import os
 import uuid
-from time import time, sleep
 import logging
 
+
+from chunker.util import get_config_path, heal, ts_round, sha256, config
 from .file import File
 
 
@@ -309,21 +311,22 @@ class Repo(ProcessEvent):
             while True:
                 # select()'ing three empty lists is an error on windows
                 if not self.peers:
-                    time.sleep(5)
+                    sleep(5)
                     continue
 
                 rs, ws, xs = select(self.peers, self.peers, [], 0)
 
                 for r in rs:
                     packet = r.recv()
+                    r.last_pong = time()
                     print "Received", packet
 
                 for w in ws:
-                    if w.last_update < time() - 60:
+                    if w.last_ping < time() - 60 and w.last_pong < time() - 60:
                         data = json.dumps({"cmd": "get-status", "since": w.last_update})
                         print "Sending", data
                         w.send(data)
-                        w.last_update = time()
+                        w.last_ping = time()
 
                 # if there was nothing to do, sleep for a bit
                 # (if there was something to do, immediately go back for more)

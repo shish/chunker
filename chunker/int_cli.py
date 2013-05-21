@@ -5,6 +5,7 @@ import json
 import os
 import readline
 
+from chunker.args import ArgParseException
 from chunker.repo import Repo
 from chunker.util import log
 from chunker.net import MetaNet
@@ -18,7 +19,10 @@ class Main(Core):
         self._init_parser(NonExitingArgumentParser)
 
         if args:
-            print json.dumps(self.do(args), indent=4)
+            try:
+                print json.dumps(self.do(args), indent=4)
+            except ArgParseException:
+                pass
         else:
             self.main_loop()
 

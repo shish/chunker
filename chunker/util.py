@@ -3,9 +3,18 @@ import os
 import math
 import sys
 import hashlib
+import netinfo
 
 
 config = {}
+
+
+def get_local_ips():
+    inetIPs = []
+    for interface in netinfo.list_active_devs():
+        ip = netinfo.get_ip(interface)
+        inetIPs.append(ip)
+    return inetIPs
 
 
 def sha256(data):

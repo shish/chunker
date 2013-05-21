@@ -13,6 +13,8 @@ requires = [
     'pydht==0.0.3',
     'pystun==0.0.2.1-shish',
     'pycrypto',
+    'pyinotify',
+    'pynetinfo',
     'web.py',
 
     # testing

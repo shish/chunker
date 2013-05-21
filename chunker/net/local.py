@@ -6,9 +6,11 @@ from threading import Thread
 import stun
 import json
 import logging
+import netinfo
 
 from chunker.net.peerfinder import PeerFinder
 from chunker.net.peer import Peer
+from chunker.util import get_local_ips
 
 
 log = logging.getLogger(__name__)
@@ -37,15 +39,19 @@ class LocalPeerFinder(PeerFinder):
         while True:
             log.info("Broadcasting local repos")
             for repo in self.core.repos.values():
-                self.socket.sendto(
-                    repo.encrypt(repo.uuid.decode("hex")),
-                    ("255.255.255.255", 54545)
-                )
+                for iface in netinfo.list_active_devs():
+                    self.socket.sendto(
+                        repo.encrypt(repo.uuid.decode("hex")),
+                        (netinfo.get_broadcast(iface), 54545)
+                    )
             sleep(5)  # low for debugging, probably want this higher
 
     def run_recv(self):
         while True:
             raw_data, addr = self.socket.recvfrom(4096)
+            if addr[0] in get_local_ips():
+                # ignore echo
+                continue
             log.info("Got possible repo broadcast from %s" % (addr, ))
             try:
                 for repo in self.core.repos.values():
