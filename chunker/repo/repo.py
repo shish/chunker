@@ -328,6 +328,10 @@ class Repo(ProcessEvent):
                         w.send(data)
                         w.last_ping = time()
 
+                for peer in self.peers:
+                    if peer.last_pong < time() - 300:
+                        log.info("Peer no longer reachable - %r" % peer)
+
                 # if there was nothing to do, sleep for a bit
                 # (if there was something to do, immediately go back for more)
                 if not rs:

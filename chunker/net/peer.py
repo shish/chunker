@@ -8,6 +8,7 @@ class Peer(object):
         self.socket.setsockopt(SOL_SOCKET, SO_BROADCAST, 1)
         self.last_ping = 0
         self.last_pong = 0
+        self.last_update = 0
 
     def __repr__(self):
         return "Peer(%r)" % (self.addr, )
