@@ -1,6 +1,7 @@
 from datetime import datetime
 from pydht import DHT
 from time import sleep
+from threading import Thread
 import stun
 import json
 import logging
@@ -23,10 +24,16 @@ class DHTPeerFinder(PeerFinder):
 
     def __init__(self, core):
         self.core = core
+        self.sender = Thread(target=self.run, name="DHTPeerFinder[Send]")
+        self.sender.daemon = True
 
+    def start(self):
+        self.sender.start()
+
+    def run(self):
         self._log("Getting external IP info")
-        #nat_type, external_ip, external_port = stun.get_ip_info()
-        nat_type, external_ip, external_port = None, "0.0.0.0", 12345
+        nat_type, external_ip, external_port = stun.get_ip_info()
+        #nat_type, external_ip, external_port = None, "0.0.0.0", 12345
         self._log("Public addr: %s:%s" % (external_ip, external_port))
 
         self._log("Connecting to DHT")

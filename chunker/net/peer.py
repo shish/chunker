@@ -21,10 +21,11 @@ class Peer(object):
         }
 
     def send(self, msg):
-        self.socket.sendto(msg, addr)
+        self.socket.sendto(msg, self.addr)
 
     def recv(self):
-        data, ancdata, flags, address = self.socket.recvmsg()
+        data, ancdata, flags, addr = self.socket.recvmsg()
+        return data
 
     def fileno(self):
         return self.socket.fileno()

@@ -2,12 +2,13 @@ from pyinotify import WatchManager, ThreadedNotifier, ProcessEvent, ALL_EVENTS
 from Crypto.Cipher import AES
 from glob import glob
 from chunker.util import log, get_config_path, heal, ts_round, sha256, config
+from select import select
 import json
 import gzip
 from datetime import datetime
 import os
 import uuid
-from time import time
+from time import time, sleep
 import logging
 
 from .file import File
@@ -302,7 +303,36 @@ class Repo(ProcessEvent):
         else:
             self.log("Not watching %s for file changes" % self.root)
 
-        self.self_heal()
+        # self.self_heal()
+
+        def netcomms():
+            while True:
+                # select()'ing three empty lists is an error on windows
+                if not self.peers:
+                    time.sleep(5)
+                    continue
+
+                rs, ws, xs = select(self.peers, self.peers, [], 0)
+
+                for r in rs:
+                    packet = r.recv()
+                    print "Received", packet
+
+                for w in ws:
+                    if w.last_update < time() - 60:
+                        data = json.dumps({"cmd": "get-status", "since": w.last_update})
+                        print "Sending", data
+                        w.send(data)
+                        w.last_update = time()
+
+                # if there was nothing to do, sleep for a bit
+                # (if there was something to do, immediately go back for more)
+                if not rs:
+                    sleep(1)
+
+        nc = Thread(target=netcomms, name="NetComms[%s]" % self.name)
+        nc.daemon = True
+        nc.start()
 
     def stop(self):
         """

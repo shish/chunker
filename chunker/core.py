@@ -7,14 +7,19 @@ from glob import glob
 import logging
 
 from chunker.repo import Repo
-from chunker.util import get_config_path, heal, log
+from chunker.util import get_config_path, heal
 from chunker.net import MetaNet
+
+
+logging.basicConfig(
+    level=logging.DEBUG,
+    format="%(asctime)-15s %(levelname)4.4s %(threadName)-22s %(filename)15s:%(lineno)-4s %(message)s",
+)
+log = logging.getLogger(__name__)
 
 
 class Core(object):
     def __init__(self):
-        logging.basicConfig(level=logging.DEBUG)
-
         self.config_file_path = get_config_path("main.conf")
         self.config = {
             "username": "TODO",
@@ -23,12 +28,13 @@ class Core(object):
         try:
             self.config.update(json.loads(open(self.config_file_path).read()))
         except Exception as e:
-            log("Error loading default config: %s" % str(e))
+            log.error("Error loading default config: %s" % str(e))
 
         self.mn = MetaNet(self)
 
         self.repos = {}
         for filename in glob(get_config_path("*.state")):
+            log.info("Loading state file: %s" % filename)
             repo = Repo(filename, config=self.config)
             self.repos[repo.uuid] = repo
 
@@ -105,7 +111,7 @@ class Core(object):
     def cmd_remove(self, args):
         if args.uuid in self.repos:
             repo = self.repos[args.uuid]
-            log("Removing %s" % repo.name)
+            log.info("Removing %s" % repo.name)
             repo.stop()
             repo.remove_state()
             del self.repos[args.uuid]
