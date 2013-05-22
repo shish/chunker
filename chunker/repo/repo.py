@@ -319,18 +319,17 @@ class Repo(ProcessEvent):
                 for r in rs:
                     packet = r.recv()
                     r.last_pong = time()
-                    print "Received", packet
 
                 for w in ws:
-                    if w.last_ping < time() - 60 and w.last_pong < time() - 60:
+                    if w.last_ping < time() - 30 and w.last_pong < time() - 30:
                         data = json.dumps({"cmd": "get-status", "since": w.last_update})
-                        print "Sending", data
                         w.send(data)
                         w.last_ping = time()
 
                 for peer in self.peers:
                     if peer.last_pong < time() - 300:
                         log.info("Peer no longer reachable - %r" % peer)
+                        peer.last_pong = time() + 10000
 
                 # if there was nothing to do, sleep for a bit
                 # (if there was something to do, immediately go back for more)

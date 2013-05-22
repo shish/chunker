@@ -44,7 +44,7 @@ class LocalPeerFinder(PeerFinder):
                         repo.encrypt(repo.uuid.decode("hex")),
                         (netinfo.get_broadcast(iface), 54545)
                     )
-            sleep(5)  # low for debugging, probably want this higher
+            sleep(15)  # low for debugging, probably want this higher
 
     def run_recv(self):
         while True:
@@ -52,7 +52,7 @@ class LocalPeerFinder(PeerFinder):
             if addr[0] in get_local_ips():
                 # ignore echo
                 continue
-            log.info("Got possible repo broadcast from %s" % (addr, ))
+            #log.debug("Got possible repo broadcast from %s" % (addr, ))
             try:
                 for repo in self.core.repos.values():
                     data = repo.decrypt(raw_data).encode("hex").lower()

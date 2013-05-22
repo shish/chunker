@@ -1,4 +1,9 @@
 from socket import *
+from time import time
+import logging
+
+log = logging.getLogger(__name__)
+
 
 class Peer(object):
     def __init__(self, addr):
@@ -7,7 +12,7 @@ class Peer(object):
         self.socket.setsockopt(SOL_SOCKET, SO_REUSEADDR, 1)
         self.socket.setsockopt(SOL_SOCKET, SO_BROADCAST, 1)
         self.last_ping = 0
-        self.last_pong = 0
+        self.last_pong = time()
         self.last_update = 0
 
     def __repr__(self):
@@ -24,10 +29,12 @@ class Peer(object):
         }
 
     def send(self, msg):
+        log.debug("Send[%r]: %s" % (self.addr, msg))
         self.socket.sendto(msg, self.addr)
 
     def recv(self):
         data, ancdata, flags, addr = self.socket.recvmsg()
+        log.debug("Recv[%r]: %s" % (addr, msg))
         return data
 
     def fileno(self):

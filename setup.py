@@ -11,7 +11,7 @@ requires = [
     #'pystun',
     #'PyDispatcher',
     'pydht==0.0.3',
-    'pystun==0.0.2.1-shish',
+    'pystun>=0.0.3',
     'pycrypto',
     'pyinotify',
     'pynetinfo',
